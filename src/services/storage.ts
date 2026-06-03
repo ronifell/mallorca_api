@@ -44,7 +44,12 @@ function publicUrlFor(key: string): string {
   return `https://${env.storage.bucket}.s3.${env.storage.region}.amazonaws.com/${key}`;
 }
 
-export async function uploadImage(buffer: Buffer, mime: string, prefix = 'photos'): Promise<StoredObject> {
+export async function uploadImage(
+  buffer: Buffer,
+  mime: string,
+  prefix = 'photos',
+  publicOrigin?: string,
+): Promise<StoredObject> {
   const ext = mime === 'image/png' ? 'png' : mime === 'image/webp' ? 'webp' : 'jpg';
   const key = `${prefix}/${new Date().toISOString().slice(0, 10)}/${uuidv4()}.${ext}`;
 
@@ -54,8 +59,9 @@ export async function uploadImage(buffer: Buffer, mime: string, prefix = 'photos
     const localDir = path.join(process.cwd(), 'uploads', path.dirname(key));
     await fs.mkdir(localDir, { recursive: true });
     await fs.writeFile(path.join(process.cwd(), 'uploads', key), buffer);
-    const url = `${env.apiBaseUrl.replace(/\/$/, '')}/uploads/${key}`;
-    logger.info('Image stored locally (dev mode)', { key });
+    const base = (publicOrigin ?? env.apiBaseUrl).replace(/\/$/, '');
+    const url = `${base}/uploads/${key}`;
+    logger.info('Image stored locally (dev mode)', { key, url });
     return { key, url };
   }
 

@@ -188,7 +188,12 @@ export const usersService = {
     return this.getMyProfile(userId);
   },
 
-  async uploadPhoto(userId: string, buffer: Buffer, mime: string): Promise<{ id: string; url: string; orderIndex: number }> {
+  async uploadPhoto(
+    userId: string,
+    buffer: Buffer,
+    mime: string,
+    publicOrigin?: string,
+  ): Promise<{ id: string; url: string; orderIndex: number }> {
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(mime)) {
       throw BadRequest('Unsupported image type. Use JPG, PNG, or WEBP');
     }
@@ -201,7 +206,7 @@ export const usersService = {
       throw Conflict(`You already have the maximum of ${MAX_PHOTOS} photos`);
     }
 
-    const stored = await uploadImage(buffer, mime, `photos/${userId}`);
+    const stored = await uploadImage(buffer, mime, `photos/${userId}`, publicOrigin);
     const r = await query<{ id: string; order_index: number }>(
       `INSERT INTO photos (user_id, image_url, storage_key, order_index)
          VALUES ($1, $2, $3, $4)

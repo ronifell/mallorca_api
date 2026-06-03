@@ -130,7 +130,13 @@ export const chatService = {
     };
   },
 
-  async uploadImage(senderId: string, conversationId: string, buffer: Buffer, mime: string) {
+  async uploadImage(
+    senderId: string,
+    conversationId: string,
+    buffer: Buffer,
+    mime: string,
+    publicOrigin?: string,
+  ) {
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(mime)) {
       throw BadRequest('Unsupported image type. Use JPG, PNG, or WEBP');
     }
@@ -138,7 +144,7 @@ export const chatService = {
     if (!ctx) throw NotFound('Conversation not found');
     assertParticipant(ctx, senderId);
 
-    const stored = await uploadImage(buffer, mime, `chat/${conversationId}`);
+    const stored = await uploadImage(buffer, mime, `chat/${conversationId}`, publicOrigin);
     return { url: stored.url };
   },
 
