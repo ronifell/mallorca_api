@@ -8,6 +8,7 @@
     "build": "tsc -p tsconfig.json",
     "start": "node dist/index.js",
     "migrate": "ts-node src/db/migrate.ts",
+    "seed:discovery": "ts-node src/db/seed-discovery.ts",
     "lint": "eslint \"src/**/*.ts\"",
     "test": "jest --passWithNoTests"
   },
