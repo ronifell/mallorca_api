@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { requestPublicOrigin } from '../../utils/request';
 import { Unauthorized } from '../../utils/errors';
 import { notificationsService } from '../notifications/notifications.service';
 import {
@@ -63,6 +64,7 @@ export const chatController = {
       id,
       req.file.buffer,
       req.file.mimetype,
+      requestPublicOrigin(req),
     );
     res.status(201).json(result);
   },

@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { Unauthorized } from '../../utils/errors';
+import { requestPublicOrigin } from '../../utils/request';
 import {
   reorderPhotosSchema,
   updateFcmTokenSchema,
@@ -30,7 +31,12 @@ export const usersController = {
       return;
     }
     res.status(201).json(
-      await usersService.uploadPhoto(userId(req), file.buffer, file.mimetype),
+      await usersService.uploadPhoto(
+        userId(req),
+        file.buffer,
+        file.mimetype,
+        requestPublicOrigin(req),
+      ),
     );
   },
 
