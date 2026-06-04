@@ -44,6 +44,85 @@ function publicUrlFor(key: string): string {
   return `https://${env.storage.bucket}.s3.${env.storage.region}.amazonaws.com/${key}`;
 }
 
+const UPLOADS_PATH_RE = /\/uploads\/(.+?)(?:\?|#|$)/;
+
+function extractUploadsKey(imageUrl: string): string | null {
+  const m = imageUrl.match(UPLOADS_PATH_RE);
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
+function isLocalUploadUrl(imageUrl: string): boolean {
+  return imageUrl.includes('/uploads/');
+}
+
+function isExternalMediaUrl(imageUrl: string): boolean {
+  try {
+    const host = new URL(imageUrl).hostname;
+    if (host === 'picsum.photos' || host.endsWith('.picsum.photos')) return true;
+    if (host.includes('.s3.') && host.endsWith('.amazonaws.com')) return true;
+    if (env.storage.publicBaseUrl && imageUrl.startsWith(env.storage.publicBaseUrl)) return true;
+    if (env.storage.endpoint && imageUrl.startsWith(env.storage.endpoint)) return true;
+  } catch {
+    return false;
+  }
+  return false;
+}
+
+function rewriteLegacyHost(url: string): string {
+  try {
+    const parsed = new URL(url);
+    if (parsed.pathname.includes('/uploads/')) {
+      const key = extractUploadsKey(url);
+      if (key) {
+        return `${env.apiBaseUrl.replace(/\/$/, '')}/uploads/${key}`;
+      }
+    }
+    const base = new URL(env.apiBaseUrl);
+    const legacyHost =
+      parsed.hostname === 'localhost' ||
+      parsed.hostname === '127.0.0.1' ||
+      /^192\.168\.\d{1,3}\.\d{1,3}$/.test(parsed.hostname) ||
+      /^10\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(parsed.hostname);
+    if (legacyHost) {
+      parsed.protocol = base.protocol;
+      parsed.host = base.host;
+      return parsed.toString();
+    }
+  } catch {
+    /* keep original */
+  }
+  return url;
+}
+
+/**
+ * Rebuilds a public URL using the current API/S3 config.
+ * Fixes photos saved with localhost/LAN URLs or after moving servers.
+ */
+export function resolveStoredUrl(imageUrl: string, storageKey?: string | null): string {
+  const trimmed = imageUrl.trim();
+  if (!trimmed) return trimmed;
+
+  const key = storageKey ?? extractUploadsKey(trimmed);
+
+  if (key && isLocalUploadUrl(trimmed)) {
+    return `${env.apiBaseUrl.replace(/\/$/, '')}/uploads/${key}`;
+  }
+
+  if (key && getClient()) {
+    return publicUrlFor(key);
+  }
+
+  if (key && !getClient()) {
+    return `${env.apiBaseUrl.replace(/\/$/, '')}/uploads/${key}`;
+  }
+
+  if (isExternalMediaUrl(trimmed)) {
+    return trimmed;
+  }
+
+  return rewriteLegacyHost(trimmed);
+}
+
 export async function uploadImage(
   buffer: Buffer,
   mime: string,

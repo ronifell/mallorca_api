@@ -1,4 +1,5 @@
 import { query, withTransaction } from '../../config/database';
+import { resolveStoredUrl } from '../../services/storage';
 import { calculateAge } from '../../utils/age';
 import { BadRequest, NotFound } from '../../utils/errors';
 import {
@@ -139,9 +140,10 @@ export const discoveryService = {
       user_id: string;
       id: string;
       image_url: string;
+      storage_key: string | null;
       order_index: number;
     }>(
-      `SELECT user_id, id, image_url, order_index FROM photos
+      `SELECT user_id, id, image_url, storage_key, order_index FROM photos
        WHERE user_id = ANY($1::uuid[])
        ORDER BY order_index ASC`,
       [ids],
@@ -154,7 +156,11 @@ export const discoveryService = {
     const photosByUser = new Map<string, { id: string; url: string; orderIndex: number }[]>();
     photosR.rows.forEach((p) => {
       const arr = photosByUser.get(p.user_id) ?? [];
-      arr.push({ id: p.id, url: p.image_url, orderIndex: p.order_index });
+      arr.push({
+        id: p.id,
+        url: resolveStoredUrl(p.image_url, p.storage_key),
+        orderIndex: p.order_index,
+      });
       photosByUser.set(p.user_id, arr);
     });
     const langsByUser = new Map<string, string[]>();
