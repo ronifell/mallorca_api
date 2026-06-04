@@ -7,6 +7,7 @@ const router = Router();
 router.use(requireAuth);
 
 router.get('/', asyncHandler(matchesController.list));
+router.get('/:id/profile', asyncHandler(matchesController.profile));
 router.delete('/:id', asyncHandler(matchesController.unmatch));
 
 export default router;
