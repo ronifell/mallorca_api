@@ -31,4 +31,9 @@ export const discoveryController = {
     await discoveryService.pass(userId(req), id);
     res.status(204).send();
   },
+
+  async resetFeed(req: Request, res: Response) {
+    await discoveryService.resetFeed(userId(req));
+    res.status(204).send();
+  },
 };

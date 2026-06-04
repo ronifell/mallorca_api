@@ -7,6 +7,7 @@ const router = Router();
 router.use(requireAuth);
 
 router.get('/feed', asyncHandler(discoveryController.feed));
+router.post('/reset', asyncHandler(discoveryController.resetFeed));
 router.post('/like/:id', asyncHandler(discoveryController.like));
 router.post('/pass/:id', asyncHandler(discoveryController.pass));
 

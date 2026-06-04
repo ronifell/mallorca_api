@@ -183,6 +183,24 @@ export const discoveryService = {
     }));
   },
 
+  /**
+   * Clears outbound passes and likes that did not become matches so the feed
+   * can be shown again from the start with current preference filters.
+   */
+  async resetFeed(userId: string): Promise<void> {
+    await query('DELETE FROM passes WHERE sender_id = $1', [userId]);
+    await query(
+      `DELETE FROM likes l
+       WHERE l.sender_id = $1
+         AND NOT EXISTS (
+           SELECT 1 FROM matches m
+           WHERE m.user_a_id = LEAST($1::uuid, l.receiver_id)
+             AND m.user_b_id = GREATEST($1::uuid, l.receiver_id)
+         )`,
+      [userId],
+    );
+  },
+
   async pass(userId: string, targetId: string): Promise<void> {
     if (userId === targetId) throw BadRequest('Cannot pass on yourself');
     await query(
