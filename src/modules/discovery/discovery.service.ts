@@ -15,6 +15,8 @@ export interface FeedCandidate {
   age: number;
   city: string | null;
   bio: string | null;
+  gender: Gender | null;
+  interestedIn: InterestedIn | null;
   photos: { id: string; url: string; orderIndex: number }[];
   languages: string[];
 }
@@ -77,7 +79,7 @@ export const discoveryService = {
     const acceptableInterests = interestsAcceptingGender(viewer.gender);
 
     const sql = `
-      SELECT u.id, u.first_name, u.birth_date, u.city, u.bio
+      SELECT u.id, u.first_name, u.birth_date, u.city, u.bio, u.gender, p.interested_in
       FROM users u
       JOIN user_preferences p ON p.user_id = u.id
       WHERE u.id <> $1
@@ -118,6 +120,8 @@ export const discoveryService = {
       birth_date: Date;
       city: string | null;
       bio: string | null;
+      gender: Gender | null;
+      interested_in: InterestedIn | null;
     }>(sql, [
       viewer.id,
       acceptedGenders,
@@ -166,6 +170,8 @@ export const discoveryService = {
       age: calculateAge(u.birth_date),
       city: u.city,
       bio: u.bio,
+      gender: u.gender,
+      interestedIn: u.interested_in,
       photos: photosByUser.get(u.id) ?? [],
       languages: langsByUser.get(u.id) ?? [],
     }));
