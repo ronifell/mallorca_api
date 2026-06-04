@@ -1,5 +1,5 @@
 import { query, withTransaction } from '../../config/database';
-import { uploadImage } from '../../services/storage';
+import { resolveStoredUrl, uploadImage } from '../../services/storage';
 import { BadRequest, Forbidden, NotFound } from '../../utils/errors';
 
 export interface ConversationContext {
@@ -125,7 +125,7 @@ export const chatService = {
       receiverId,
       type: input.type,
       text: input.text ?? null,
-      imageUrl: input.imageUrl ?? null,
+      imageUrl: input.imageUrl ? resolveStoredUrl(input.imageUrl) : null,
       createdAt: insertedId.createdAt.toISOString(),
     };
   },
@@ -190,7 +190,7 @@ export const chatService = {
         senderId: m.sender_id,
         type: m.type,
         text: m.text,
-        imageUrl: m.image_url,
+        imageUrl: m.image_url ? resolveStoredUrl(m.image_url) : null,
         deliveredAt: m.delivered_at ? m.delivered_at.toISOString() : null,
         readAt: m.read_at ? m.read_at.toISOString() : null,
         createdAt: m.created_at.toISOString(),

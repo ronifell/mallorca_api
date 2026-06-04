@@ -1,5 +1,5 @@
 import { query, withTransaction } from '../../config/database';
-import { uploadImage } from '../../services/storage';
+import { resolveStoredUrl, uploadImage } from '../../services/storage';
 import { calculateAge, isAdult, MIN_AGE } from '../../utils/age';
 import { BadRequest, Conflict, NotFound } from '../../utils/errors';
 import { UpdateProfileInput } from './users.schemas';
@@ -33,11 +33,20 @@ export interface MyProfile extends PublicProfile {
 }
 
 async function loadPhotos(userId: string) {
-  const r = await query<{ id: string; image_url: string; order_index: number }>(
-    `SELECT id, image_url, order_index FROM photos WHERE user_id = $1 ORDER BY order_index ASC`,
+  const r = await query<{
+    id: string;
+    image_url: string;
+    storage_key: string | null;
+    order_index: number;
+  }>(
+    `SELECT id, image_url, storage_key, order_index FROM photos WHERE user_id = $1 ORDER BY order_index ASC`,
     [userId],
   );
-  return r.rows.map((p) => ({ id: p.id, url: p.image_url, orderIndex: p.order_index }));
+  return r.rows.map((p) => ({
+    id: p.id,
+    url: resolveStoredUrl(p.image_url, p.storage_key),
+    orderIndex: p.order_index,
+  }));
 }
 
 async function loadLanguages(userId: string): Promise<string[]> {

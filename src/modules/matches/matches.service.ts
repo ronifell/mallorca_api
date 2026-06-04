@@ -1,4 +1,5 @@
 import { query } from '../../config/database';
+import { resolveStoredUrl } from '../../services/storage';
 import { calculateAge } from '../../utils/age';
 import { NotFound } from '../../utils/errors';
 
@@ -113,7 +114,7 @@ export const matchesService = {
         firstName: row.other_first_name,
         age: row.other_birth_date ? calculateAge(row.other_birth_date) : null,
         city: row.other_city,
-        coverPhoto: row.cover_photo,
+        coverPhoto: row.cover_photo ? resolveStoredUrl(row.cover_photo) : null,
       },
       lastMessage: row.last_message_id
         ? {
@@ -182,8 +183,8 @@ export const matchesService = {
     if (!row) throw NotFound('Match not found');
 
     const [photos, languages] = await Promise.all([
-      query<{ id: string; image_url: string; order_index: number }>(
-        `SELECT id, image_url, order_index FROM photos WHERE user_id = $1 ORDER BY order_index ASC`,
+      query<{ id: string; image_url: string; storage_key: string | null; order_index: number }>(
+        `SELECT id, image_url, storage_key, order_index FROM photos WHERE user_id = $1 ORDER BY order_index ASC`,
         [row.other_id],
       ),
       query<{ language: string }>(
@@ -205,7 +206,7 @@ export const matchesService = {
         languages: languages.rows.map((x) => x.language),
         photos: photos.rows.map((p) => ({
           id: p.id,
-          url: p.image_url,
+          url: resolveStoredUrl(p.image_url, p.storage_key),
           orderIndex: p.order_index,
         })),
         interestedIn: row.other_interested_in,
