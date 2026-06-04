@@ -11,6 +11,9 @@ export const matchesController = {
   async list(req: Request, res: Response) {
     res.json({ matches: await matchesService.list(userId(req)) });
   },
+  async profile(req: Request, res: Response) {
+    res.json(await matchesService.getProfile(userId(req), req.params.id));
+  },
   async unmatch(req: Request, res: Response) {
     await matchesService.unmatch(userId(req), req.params.id);
     res.status(204).send();
