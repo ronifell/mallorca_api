@@ -113,11 +113,7 @@ export const authController = {
 
   async resendVerification(req: Request, res: Response) {
     const data = resendVerificationSchema.parse(req.body);
-    const result = await authService.resendVerification(data);
-    if (result.verifyUrl) {
-      res.json({ verifyUrl: result.verifyUrl, delivery: 'log' as const });
-      return;
-    }
+    await authService.resendVerification(data);
     res.status(204).send();
   },
 };
