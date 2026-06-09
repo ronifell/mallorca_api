@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { env } from '../../config/env';
 import { authService } from './auth.service';
 import {
   forgotPasswordSchema,
@@ -10,10 +11,17 @@ import {
   verifyEmailSchema,
 } from './auth.schemas';
 
-const VERIFIED_PAGE_HTML = `<!doctype html>
+function buildEmailVerifiedDeepLink(): string {
+  return `${env.app.deepLinkScheme}://email-verified`;
+}
+
+function buildVerifiedPageHtml(deepLink: string): string {
+  const safeLink = deepLink.replace(/"/g, '&quot;');
+  return `<!doctype html>
 <html lang="es"><head><meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Cuenta verificada · Citas Mallorca</title>
+<meta http-equiv="refresh" content="1;url=${safeLink}" />
 <style>
   body { margin:0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background:#F2EBE0; color:#3D2618; }
   .wrap { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
@@ -23,15 +31,41 @@ const VERIFIED_PAGE_HTML = `<!doctype html>
   h1 { font-size:22px; margin:18px 0 6px; }
   p { color:#7A5640; line-height:22px; }
   .ok { width:64px; height:64px; border-radius:32px; background:#FEF0EE; display:inline-flex; align-items:center; justify-content:center; color:#E8554E; font-size:30px; font-weight:700; margin:8px 0 12px; }
+  .btn { display:inline-block; margin-top:18px; padding:14px 26px; background:#E8554E; color:#fff; font-weight:700; text-decoration:none; border-radius:999px; font-size:15px; }
+  .hint { font-size:13px; margin-top:14px; color:#7A5640; }
 </style>
+<script>
+  setTimeout(function () {
+    window.location.replace(${JSON.stringify(deepLink)});
+  }, 600);
+</script>
 </head>
 <body><div class="wrap"><div class="card">
   <div class="logo">Citas <span>Mallorca</span></div>
   <div class="ok">✓</div>
   <h1>¡Cuenta verificada!</h1>
-  <p>Ya puedes volver a la app y empezar a conectar con la comunidad de Citas Mallorca.</p>
-  <p style="font-size:13px;margin-top:18px">Your account has been verified. You can return to the app and start connecting.</p>
+  <p>Abriendo la app para continuar con tu perfil…</p>
+  <p class="hint">Opening the app so you can continue setting up your profile…</p>
+  <a class="btn" href="${safeLink}">Abrir la app · Open app</a>
 </div></div></body></html>`;
+}
+
+function buildInvalidTokenPageHtml(): string {
+  return buildVerifiedPageHtml(buildEmailVerifiedDeepLink())
+    .replace('¡Cuenta verificada!', 'Enlace no válido')
+    .replace(
+      'Abriendo la app para continuar con tu perfil…',
+      'El enlace ha caducado o ya se ha utilizado. Solicita uno nuevo desde la app.',
+    )
+    .replace(
+      'Opening the app so you can continue setting up your profile…',
+      'This link has expired or has already been used. Request a new one from the app.',
+    )
+    .replace('✓', '!')
+    .replace(/<meta http-equiv="refresh"[^>]+>/, '')
+    .replace(/<script>[\s\S]*?<\/script>/, '')
+    .replace(/<a class="btn"[^>]*>[\s\S]*?<\/a>/, '');
+}
 
 export const authController = {
   async register(req: Request, res: Response) {
@@ -87,27 +121,16 @@ export const authController = {
       if (accepts.includes('application/json')) {
         res.status(400).json({ error: { code: 'BAD_REQUEST', message: (e as Error).message } });
       } else {
-        res.status(400).type('html').send(
-          VERIFIED_PAGE_HTML.replace('¡Cuenta verificada!', 'Enlace no válido')
-            .replace(
-              'Ya puedes volver a la app y empezar a conectar con la comunidad de Citas Mallorca.',
-              'El enlace ha caducado o ya se ha utilizado. Solicita uno nuevo desde la app.',
-            )
-            .replace(
-              'Your account has been verified. You can return to the app and start connecting.',
-              'This link has expired or has already been used. Request a new one from the app.',
-            )
-            .replace('✓', '!'),
-        );
+        res.status(400).type('html').send(buildInvalidTokenPageHtml());
       }
       return;
     }
 
     const accepts = (req.headers.accept ?? '').toString();
     if (accepts.includes('application/json')) {
-      res.json({ verified: true });
+      res.json({ verified: true, deepLink: buildEmailVerifiedDeepLink() });
     } else {
-      res.type('html').send(VERIFIED_PAGE_HTML);
+      res.type('html').send(buildVerifiedPageHtml(buildEmailVerifiedDeepLink()));
     }
   },
 
