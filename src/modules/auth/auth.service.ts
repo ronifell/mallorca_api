@@ -12,7 +12,6 @@ import {
   verifyRefreshToken,
 } from '../../utils/jwt';
 import { hashPassword, isStrongPassword, verifyPassword } from '../../utils/password';
-import { logger } from '../../utils/logger';
 import {
   ForgotPasswordInput,
   LoginInput,
@@ -46,12 +45,11 @@ async function sendVerificationEmail(
   userId: string,
   email: string,
   firstName: string | null,
-): Promise<string> {
+): Promise<void> {
   const raw = await issueVerificationToken(userId);
   const verifyUrl = buildVerifyUrl(raw);
   const tpl = welcomeVerificationEmail({ firstName, verifyUrl });
   await sendMail({ to: email, subject: tpl.subject, html: tpl.html, text: tpl.text });
-  return verifyUrl;
 }
 
 interface AuthTokens {
@@ -173,13 +171,7 @@ export const authService = {
 
     // Send welcome / verification email in the background so a slow or
     // misconfigured SMTP server cannot delay (or break) registration.
-    void sendVerificationEmail(inserted.id, inserted.email, null).catch((err) => {
-      logger.warn('Verification email failed after register', {
-        userId: inserted.id,
-        email: inserted.email,
-        err: err instanceof Error ? err.message : String(err),
-      });
-    });
+    void sendVerificationEmail(inserted.id, inserted.email, null).catch(() => undefined);
 
     return {
       ...tokens,
@@ -268,9 +260,7 @@ export const authService = {
     return { verified: true };
   },
 
-  async resendVerification(
-    input: ResendVerificationInput,
-  ): Promise<{ verifyUrl?: string }> {
+  async resendVerification(input: ResendVerificationInput): Promise<void> {
     const r = await query<{
       id: string;
       email: string;
@@ -282,21 +272,12 @@ export const authService = {
     );
     const user = r.rows[0];
     // Always succeed (no enumeration). Skip if missing or already verified.
-    if (!user || user.email_verified_at) return {};
+    if (!user || user.email_verified_at) return;
     try {
-      const verifyUrl = await sendVerificationEmail(user.id, user.email, user.first_name);
-      // When EMAIL_PROVIDER=log, SMTP is not used — return the link for in-app testing.
-      if (env.mail.provider === 'log') {
-        return { verifyUrl };
-      }
-    } catch (err) {
-      logger.warn('Verification email failed on resend', {
-        userId: user.id,
-        email: user.email,
-        err: err instanceof Error ? err.message : String(err),
-      });
+      await sendVerificationEmail(user.id, user.email, user.first_name);
+    } catch {
+      // best effort
     }
-    return {};
   },
 
   async refresh(input: RefreshInput): Promise<AuthTokens> {
