@@ -32,6 +32,22 @@ export const discoveryController = {
     res.status(204).send();
   },
 
+  async sentLikes(req: Request, res: Response) {
+    const users = await discoveryService.getSentLikes(userId(req));
+    res.json({ users });
+  },
+
+  async receivedLikes(req: Request, res: Response) {
+    const users = await discoveryService.getReceivedLikes(userId(req));
+    res.json({ users });
+  },
+
+  async unlike(req: Request, res: Response) {
+    const { id } = likeParamsSchema.parse(req.params);
+    await discoveryService.unlike(userId(req), id);
+    res.status(204).send();
+  },
+
   async resetFeed(req: Request, res: Response) {
     await discoveryService.resetFeed(userId(req));
     res.status(204).send();
