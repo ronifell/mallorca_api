@@ -73,6 +73,11 @@ export const env = {
     url: process.env.PUBLIC_WEB_URL ?? 'https://www.citasmallorca.es',
   },
 
+  app: {
+    /** Custom URL scheme used to return users to the mobile app after email verification. */
+    deepLinkScheme: (process.env.APP_DEEP_LINK_SCHEME ?? 'citasmallorca').replace(/:$/, ''),
+  },
+
   contact: {
     info: process.env.CONTACT_INFO_EMAIL ?? 'info@citasmallorca.es',
     support: process.env.CONTACT_SUPPORT_EMAIL ?? 'soporte@citasmallorca.es',
