@@ -82,7 +82,6 @@ export function welcomeVerificationEmail(vars: VerifyEmailVars): {
 } {
   const greetingEs = vars.firstName ? `¡Hola, ${escape(vars.firstName)}!` : '¡Hola!';
   const greetingEn = vars.firstName ? `Hi ${escape(vars.firstName)}!` : 'Hello!';
-  const safeAppUrl = escape(vars.appVerifyUrl);
   const safeUrl = escape(vars.verifyUrl);
 
   const inner = `
@@ -92,16 +91,24 @@ export function welcomeVerificationEmail(vars: VerifyEmailVars): {
       tenerte aquí. Pulsa el botón para confirmar tu perfil y empezar a
       conectar con otras personas.
     </p>
-    <table cellpadding="0" cellspacing="0" border="0" style="margin:18px 0;">
-      <tr><td align="center" bgcolor="${BRAND.coral}" style="border-radius:999px;">
-        <a href="${safeAppUrl}" style="display:inline-block;padding:14px 26px;color:${BRAND.white};font-weight:700;text-decoration:none;font-size:15px;border-radius:999px;">
-          Confirmar mi cuenta
-        </a>
-      </td></tr>
+    <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:20px 0;">
+      <tr>
+        <td align="center">
+          <table cellpadding="0" cellspacing="0" border="0">
+            <tr>
+              <td align="center" bgcolor="${BRAND.coral}" style="border-radius:999px;">
+                <a href="${safeUrl}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:16px 36px;color:${BRAND.white};font-weight:700;text-decoration:none;font-size:16px;line-height:22px;border-radius:999px;min-width:240px;text-align:center;mso-padding-alt:16px 36px;">
+                  Confirmar mi cuenta
+                </a>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
     </table>
     <p style="margin:0 0 10px 0;font-size:13px;color:${BRAND.inkSoft};">
-      Si el botón no abre la app, copia y pega este enlace en tu navegador:<br />
-      <a href="${safeUrl}" style="color:${BRAND.coral};word-break:break-all;">${safeUrl}</a>
+      Si el botón no funciona, copia y pega este enlace en tu navegador:<br />
+      <a href="${safeUrl}" target="_blank" rel="noopener noreferrer" style="color:${BRAND.coral};word-break:break-all;">${safeUrl}</a>
     </p>
     <hr style="border:none;border-top:1px solid ${BRAND.border};margin:24px 0;" />
     <h2 style="margin:0 0 8px 0;font-size:16px;color:${BRAND.ink};">${greetingEn}</h2>
@@ -122,8 +129,7 @@ export function welcomeVerificationEmail(vars: VerifyEmailVars): {
     text:
       `${greetingEs}\n\nBienvenido a la comunidad de Citas Mallorca. ` +
       `Nos alegra tenerte aquí. Pulsa el siguiente enlace para confirmar tu ` +
-      `perfil y empezar a conectar con otras personas:\n\n${vars.appVerifyUrl}\n\n` +
-      `Enlace alternativo en el navegador:\n${vars.verifyUrl}\n\n` +
+      `perfil y empezar a conectar con otras personas:\n\n${vars.verifyUrl}\n\n` +
       `${greetingEn}\nWelcome to the Citas Mallorca community. We're glad to ` +
       `have you here. Click the link above to confirm your profile and start ` +
       `connecting with others.\n\nwww.citasmallorca.es`,
