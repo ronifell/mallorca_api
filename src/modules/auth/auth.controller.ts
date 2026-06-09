@@ -15,13 +15,17 @@ function buildEmailVerifiedDeepLink(): string {
   return `${env.app.deepLinkScheme}://email-verified`;
 }
 
+function buildAndroidEmailVerifiedIntent(): string {
+  return `intent://email-verified#Intent;scheme=${env.app.deepLinkScheme};package=es.citasmallorca.app;end`;
+}
+
 function buildVerifiedPageHtml(deepLink: string): string {
   const safeLink = deepLink.replace(/"/g, '&quot;');
+  const androidIntent = buildAndroidEmailVerifiedIntent().replace(/"/g, '&quot;');
   return `<!doctype html>
 <html lang="es"><head><meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Cuenta verificada · Citas Mallorca</title>
-<meta http-equiv="refresh" content="1;url=${safeLink}" />
 <style>
   body { margin:0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background:#F2EBE0; color:#3D2618; }
   .wrap { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
@@ -35,9 +39,14 @@ function buildVerifiedPageHtml(deepLink: string): string {
   .hint { font-size:13px; margin-top:14px; color:#7A5640; }
 </style>
 <script>
-  setTimeout(function () {
-    window.location.replace(${JSON.stringify(deepLink)});
-  }, 600);
+  (function () {
+    var appLink = ${JSON.stringify(deepLink)};
+    var androidIntent = ${JSON.stringify(buildAndroidEmailVerifiedIntent())};
+    var target = /Android/i.test(navigator.userAgent) ? androidIntent : appLink;
+    setTimeout(function () {
+      window.location.replace(target);
+    }, 400);
+  })();
 </script>
 </head>
 <body><div class="wrap"><div class="card">
@@ -47,6 +56,7 @@ function buildVerifiedPageHtml(deepLink: string): string {
   <p>Abriendo la app para continuar con tu perfil…</p>
   <p class="hint">Opening the app so you can continue setting up your profile…</p>
   <a class="btn" href="${safeLink}">Abrir la app · Open app</a>
+  <p class="hint"><a href="${androidIntent}" style="color:#E8554E;text-decoration:none;">Android: abrir app</a></p>
 </div></div></body></html>`;
 }
 
