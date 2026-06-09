@@ -20,6 +20,7 @@ export interface FeedCandidate {
   interestedIn: InterestedIn | null;
   photos: { id: string; url: string; orderIndex: number }[];
   languages: string[];
+  isPremium: boolean;
 }
 
 interface ViewerProfile {
@@ -80,7 +81,7 @@ export const discoveryService = {
     const acceptableInterests = interestsAcceptingGender(viewer.gender);
 
     const sql = `
-      SELECT u.id, u.first_name, u.birth_date, u.city, u.bio, u.gender, p.interested_in
+      SELECT u.id, u.first_name, u.birth_date, u.city, u.bio, u.gender, u.is_premium, p.interested_in
       FROM users u
       JOIN user_preferences p ON p.user_id = u.id
       WHERE u.id <> $1
@@ -122,6 +123,7 @@ export const discoveryService = {
       city: string | null;
       bio: string | null;
       gender: Gender | null;
+      is_premium: boolean;
       interested_in: InterestedIn | null;
     }>(sql, [
       viewer.id,
@@ -180,6 +182,7 @@ export const discoveryService = {
       interestedIn: u.interested_in,
       photos: photosByUser.get(u.id) ?? [],
       languages: langsByUser.get(u.id) ?? [],
+      isPremium: u.is_premium,
     }));
   },
 
@@ -234,6 +237,24 @@ export const discoveryService = {
            ON CONFLICT (sender_id, receiver_id) DO NOTHING`,
         [userId, targetId],
       );
+      // Liking implicitly retracts a prior pass on this candidate.
+      await client.query(
+        `DELETE FROM passes WHERE sender_id = $1 AND receiver_id = $2`,
+        [userId, targetId],
+      );
+
+      // If a match already exists between these two users, surface that
+      // instead of returning matched: false silently.
+      const existingMatch = await client.query<{ id: string }>(
+        `SELECT id FROM matches
+           WHERE user_a_id = LEAST($1::uuid, $2::uuid)
+             AND user_b_id = GREATEST($1::uuid, $2::uuid)
+           LIMIT 1`,
+        [userId, targetId],
+      );
+      if (existingMatch.rowCount) {
+        return { matched: true, matchId: existingMatch.rows[0].id };
+      }
 
       // Check reciprocal like.
       const reciprocal = await client.query(
@@ -271,15 +292,15 @@ export const discoveryService = {
       );
       if (!compatible) return { matched: false };
 
-      // Canonical (a < b) ordering required by the UNIQUE constraint.
-      const a = userId < targetId ? userId : targetId;
-      const b = userId < targetId ? targetId : userId;
-
+      // Canonical (a < b) ordering required by the UNIQUE+CHECK constraint.
+      // Use a SQL-level LEAST/GREATEST to ensure ordering matches PG's UUID
+      // comparison (which is binary, not lexicographic on the JS string).
       const matchR = await client.query<{ id: string }>(
-        `INSERT INTO matches (user_a_id, user_b_id) VALUES ($1, $2)
+        `INSERT INTO matches (user_a_id, user_b_id)
+           VALUES (LEAST($1::uuid, $2::uuid), GREATEST($1::uuid, $2::uuid))
            ON CONFLICT (user_a_id, user_b_id) DO UPDATE SET matched_at = matches.matched_at
            RETURNING id`,
-        [a, b],
+        [userId, targetId],
       );
 
       // Auto-create the conversation shell. No initiator yet (depends on which

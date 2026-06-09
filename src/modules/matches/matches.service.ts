@@ -3,6 +3,8 @@ import { resolveStoredUrl } from '../../services/storage';
 import { calculateAge } from '../../utils/age';
 import { NotFound } from '../../utils/errors';
 
+import type { Gender } from '../discovery/compatibility';
+
 export interface MatchUserProfile {
   matchId: string;
   conversationId: string | null;
@@ -10,7 +12,7 @@ export interface MatchUserProfile {
     id: string;
     firstName: string | null;
     age: number | null;
-    gender: 'male' | 'female' | null;
+    gender: Gender | null;
     city: string | null;
     bio: string | null;
     languages: string[];
@@ -31,6 +33,7 @@ export interface MatchListItem {
     age: number | null;
     city: string | null;
     coverPhoto: string | null;
+    isPremium: boolean;
   };
   lastMessage: {
     id: string;
@@ -52,6 +55,7 @@ export const matchesService = {
       other_first_name: string | null;
       other_birth_date: Date | null;
       other_city: string | null;
+      other_is_premium: boolean;
       cover_photo: string | null;
       last_message_id: string | null;
       last_message_text: string | null;
@@ -69,6 +73,7 @@ export const matchesService = {
         ou.first_name AS other_first_name,
         ou.birth_date AS other_birth_date,
         ou.city       AS other_city,
+        ou.is_premium AS other_is_premium,
         (SELECT image_url FROM photos
            WHERE user_id = CASE WHEN m.user_a_id = $1 THEN m.user_b_id ELSE m.user_a_id END
            ORDER BY order_index ASC LIMIT 1) AS cover_photo,
@@ -115,6 +120,7 @@ export const matchesService = {
         age: row.other_birth_date ? calculateAge(row.other_birth_date) : null,
         city: row.other_city,
         coverPhoto: row.cover_photo ? resolveStoredUrl(row.cover_photo) : null,
+        isPremium: row.other_is_premium,
       },
       lastMessage: row.last_message_id
         ? {
@@ -145,7 +151,7 @@ export const matchesService = {
       other_id: string;
       other_first_name: string | null;
       other_birth_date: Date | null;
-      other_gender: 'male' | 'female' | null;
+      other_gender: Gender | null;
       other_city: string | null;
       other_bio: string | null;
       other_is_premium: boolean;

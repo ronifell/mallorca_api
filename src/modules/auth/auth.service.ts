@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { query, withTransaction } from '../../config/database';
 import { env } from '../../config/env';
 import { sendMail } from '../../services/mailer';
+import { passwordResetEmail, welcomeVerificationEmail } from '../../services/emailTemplates';
 import { BadRequest, Conflict, Unauthorized } from '../../utils/errors';
 import {
   AccessTokenPayload,
@@ -16,8 +17,40 @@ import {
   LoginInput,
   RefreshInput,
   RegisterInput,
+  ResendVerificationInput,
   ResetPasswordInput,
+  VerifyEmailInput,
 } from './auth.schemas';
+
+const VERIFICATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+
+function buildVerifyUrl(rawToken: string): string {
+  const base = env.apiBaseUrl.replace(/\/$/, '');
+  return `${base}/api/auth/verify-email?token=${encodeURIComponent(rawToken)}`;
+}
+
+async function issueVerificationToken(userId: string): Promise<string> {
+  const raw = crypto.randomBytes(32).toString('hex');
+  const tokenHash = crypto.createHash('sha256').update(raw).digest('hex');
+  const expiresAt = new Date(Date.now() + VERIFICATION_TOKEN_TTL_MS);
+  await query(
+    `INSERT INTO email_verifications (user_id, token_hash, expires_at)
+       VALUES ($1, $2, $3)`,
+    [userId, tokenHash, expiresAt],
+  );
+  return raw;
+}
+
+async function sendVerificationEmail(
+  userId: string,
+  email: string,
+  firstName: string | null,
+): Promise<void> {
+  const raw = await issueVerificationToken(userId);
+  const verifyUrl = buildVerifyUrl(raw);
+  const tpl = welcomeVerificationEmail({ firstName, verifyUrl });
+  await sendMail({ to: email, subject: tpl.subject, html: tpl.html, text: tpl.text });
+}
 
 interface AuthTokens {
   accessToken: string;
@@ -31,6 +64,7 @@ interface AuthResult extends AuthTokens {
     role: 'user' | 'admin';
     isPremium: boolean;
     profileComplete: boolean;
+    emailVerified: boolean;
   };
 }
 
@@ -102,11 +136,22 @@ export const authService = {
     const hash = await hashPassword(input.password);
     const role = isAdminEmail(input.email) ? 'admin' : 'user';
 
+    const acceptedPrivacy = input.acceptedPrivacy === true;
     const inserted = await withTransaction(async (client) => {
       const r = await client.query<{ id: string; email: string }>(
-        `INSERT INTO users (email, password_hash, role, language)
-         VALUES ($1, $2, $3, $4) RETURNING id, email`,
-        [input.email.toLowerCase(), hash, role, input.language ?? 'en'],
+        `INSERT INTO users (
+            email, password_hash, role, language,
+            terms_accepted_at, privacy_accepted_at
+         )
+         VALUES ($1, $2, $3, $4, NOW(), $5)
+         RETURNING id, email`,
+        [
+          input.email.toLowerCase(),
+          hash,
+          role,
+          input.language ?? 'en',
+          acceptedPrivacy ? new Date() : null,
+        ],
       );
       const u = r.rows[0];
       await client.query(
@@ -116,6 +161,14 @@ export const authService = {
       );
       return u;
     });
+
+    // Best-effort: send the welcome / verification email. We never fail the
+    // registration if SMTP is misconfigured (the user can still resend later).
+    try {
+      await sendVerificationEmail(inserted.id, inserted.email, null);
+    } catch {
+      // ignored on purpose
+    }
 
     const tokens = await issueTokens({
       id: inserted.id,
@@ -132,6 +185,7 @@ export const authService = {
         role,
         isPremium: false,
         profileComplete: false,
+        emailVerified: false,
       },
     };
   },
@@ -144,8 +198,9 @@ export const authService = {
       is_premium: boolean;
       role: 'user' | 'admin';
       status: string;
+      email_verified_at: Date | null;
     }>(
-      `SELECT id, email, password_hash, is_premium, role, status
+      `SELECT id, email, password_hash, is_premium, role, status, email_verified_at
        FROM users WHERE email = $1`,
       [input.email.toLowerCase()],
     );
@@ -173,8 +228,60 @@ export const authService = {
         role: user.role,
         isPremium: user.is_premium,
         profileComplete: await profileComplete(user.id),
+        emailVerified: user.email_verified_at != null,
       },
     };
+  },
+
+  async verifyEmail(input: VerifyEmailInput): Promise<{ verified: boolean }> {
+    const tokenHash = crypto.createHash('sha256').update(input.token).digest('hex');
+    const r = await query<{
+      id: string;
+      user_id: string;
+      used_at: Date | null;
+      expires_at: Date;
+    }>(
+      `SELECT id, user_id, used_at, expires_at
+         FROM email_verifications
+         WHERE token_hash = $1`,
+      [tokenHash],
+    );
+    const row = r.rows[0];
+    if (!row || row.used_at || row.expires_at.getTime() < Date.now()) {
+      throw BadRequest('Invalid or expired verification token');
+    }
+    await withTransaction(async (client) => {
+      await client.query(
+        `UPDATE email_verifications SET used_at = NOW() WHERE id = $1`,
+        [row.id],
+      );
+      await client.query(
+        `UPDATE users SET email_verified_at = COALESCE(email_verified_at, NOW())
+           WHERE id = $1`,
+        [row.user_id],
+      );
+    });
+    return { verified: true };
+  },
+
+  async resendVerification(input: ResendVerificationInput): Promise<void> {
+    const r = await query<{
+      id: string;
+      email: string;
+      first_name: string | null;
+      email_verified_at: Date | null;
+    }>(
+      `SELECT id, email, first_name, email_verified_at FROM users WHERE email = $1`,
+      [input.email.toLowerCase()],
+    );
+    const user = r.rows[0];
+    // Always succeed (no enumeration). Skip if missing or already verified.
+    if (!user || user.email_verified_at) return;
+    try {
+      await sendVerificationEmail(user.id, user.email, user.first_name);
+    } catch {
+      // best effort
+    }
   },
 
   async refresh(input: RefreshInput): Promise<AuthTokens> {
@@ -247,20 +354,12 @@ export const authService = {
     );
 
     const resetUrl = `${env.apiBaseUrl.replace(/\/$/, '')}/reset-password?token=${raw}`;
+    const tpl = passwordResetEmail({ firstName: null, resetUrl });
     await sendMail({
       to: input.email,
-      subject: 'Restablece tu contraseña / Reset your password',
-      html: `
-        <p>Hola,</p>
-        <p>Hemos recibido una solicitud para restablecer tu contraseña en Citas Mallorca.</p>
-        <p><a href="${resetUrl}">Restablecer contraseña</a></p>
-        <p>Este enlace caduca en 1 hora.</p>
-        <hr/>
-        <p>Hello,</p>
-        <p>We received a request to reset your Citas Mallorca password.</p>
-        <p><a href="${resetUrl}">Reset password</a></p>
-        <p>This link expires in 1 hour.</p>
-      `,
+      subject: tpl.subject,
+      html: tpl.html,
+      text: tpl.text,
     });
   },
 

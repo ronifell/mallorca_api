@@ -58,6 +58,26 @@ export const env = {
     serviceAccountJson: process.env.GOOGLE_SERVICE_ACCOUNT_JSON ?? '',
   },
 
+  billing: {
+    /**
+     * If false (the default), the backend refuses to activate Premium in
+     * the absence of real Play Store credentials. Set BILLING_ALLOW_MOCK=true
+     * **only** in dev/staging when you want to exercise the gating without
+     * real purchases.
+     */
+    allowMock: process.env.BILLING_ALLOW_MOCK === 'true',
+  },
+
+  publicWeb: {
+    /** Marketing / legal site that hosts T&C + privacy policy. */
+    url: process.env.PUBLIC_WEB_URL ?? 'https://www.citasmallorca.es',
+  },
+
+  contact: {
+    info: process.env.CONTACT_INFO_EMAIL ?? 'info@citasmallorca.es',
+    support: process.env.CONTACT_SUPPORT_EMAIL ?? 'soporte@citasmallorca.es',
+  },
+
   rateLimit: {
     windowMs: Number(process.env.RATE_LIMIT_WINDOW_MS ?? 15 * 60 * 1000),
     max: Number(process.env.RATE_LIMIT_MAX ?? 300),

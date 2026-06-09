@@ -34,8 +34,13 @@ async function validateWithGooglePlay(
   purchaseToken: string,
 ): Promise<ValidatedPurchase> {
   if (!env.googlePlay.serviceAccountJson) {
-    // Dev mode: trust the client. This must NEVER be used in production.
-    logger.warn('GOOGLE_SERVICE_ACCOUNT_JSON not configured; granting dev subscription');
+    if (!env.billing.allowMock) {
+      logger.warn('Refused mock purchase (BILLING_ALLOW_MOCK is not enabled)');
+      throw BadRequest(
+        'Premium purchases must be validated through Google Play. Please complete the in-app purchase flow.',
+      );
+    }
+    logger.warn('GOOGLE_SERVICE_ACCOUNT_JSON not configured; granting MOCK subscription (dev only)');
     const days = PRODUCT_DURATION_DAYS[productId] ?? 30;
     const start = new Date();
     const expiry = new Date(start.getTime() + days * 24 * 60 * 60 * 1000);
@@ -75,8 +80,12 @@ async function validateWithAppStore(
   _purchaseToken: string,
 ): Promise<ValidatedPurchase> {
   // Placeholder for future App Store Server Notifications / receipt validation.
-  // Architecture is identical: validate, return start/expiry.
-  logger.warn('App Store validation not yet implemented; granting dev subscription');
+  if (!env.billing.allowMock) {
+    throw BadRequest(
+      'App Store validation is not yet available. Please use Google Play to subscribe.',
+    );
+  }
+  logger.warn('App Store validation not yet implemented; granting MOCK subscription (dev only)');
   const days = PRODUCT_DURATION_DAYS[productId] ?? 30;
   const start = new Date();
   const expiry = new Date(start.getTime() + days * 24 * 60 * 60 * 1000);

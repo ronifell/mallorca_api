@@ -2,15 +2,18 @@ import { query, withTransaction } from '../../config/database';
 import { resolveStoredUrl, uploadImage } from '../../services/storage';
 import { calculateAge, isAdult, MIN_AGE } from '../../utils/age';
 import { BadRequest, Conflict, NotFound } from '../../utils/errors';
+import type { Gender } from '../discovery/compatibility';
 import { UpdateProfileInput } from './users.schemas';
 
 const MAX_PHOTOS = 6;
+
+export type InterestSelection = 'men' | 'women' | 'everyone';
 
 export interface PublicProfile {
   id: string;
   firstName: string | null;
   age: number | null;
-  gender: 'male' | 'female' | null;
+  gender: Gender | null;
   city: string | null;
   bio: string | null;
   languages: string[];
@@ -20,8 +23,11 @@ export interface PublicProfile {
 
 export interface MyProfile extends PublicProfile {
   email: string;
+  emailVerified: boolean;
   birthDate: string | null;
   interestedIn: 'men' | 'women' | 'both' | null;
+  /** Raw multi-select user-facing selections. */
+  interestSelections: InterestSelection[];
   minAge: number;
   maxAge: number;
   appLanguage: string;
@@ -30,6 +36,27 @@ export interface MyProfile extends PublicProfile {
     messages: boolean;
     subscription: boolean;
   };
+}
+
+/**
+ * Map a multi-select array of UI selections (Men / Women / Everyone) to the
+ * 3-state DB enum stored on `user_preferences.interested_in`.
+ *   - "everyone"           -> 'both'
+ *   - "men" + "women"      -> 'both'
+ *   - "men" alone          -> 'men'
+ *   - "women" alone        -> 'women'
+ */
+export function selectionsToInterestedIn(
+  selections: InterestSelection[],
+): 'men' | 'women' | 'both' | null {
+  if (!selections.length) return null;
+  if (selections.includes('everyone')) return 'both';
+  const hasMen = selections.includes('men');
+  const hasWomen = selections.includes('women');
+  if (hasMen && hasWomen) return 'both';
+  if (hasMen) return 'men';
+  if (hasWomen) return 'women';
+  return null;
 }
 
 async function loadPhotos(userId: string) {
@@ -57,14 +84,23 @@ async function loadLanguages(userId: string): Promise<string[]> {
   return r.rows.map((x) => x.language);
 }
 
+async function loadInterestSelections(userId: string): Promise<InterestSelection[]> {
+  const r = await query<{ selection: InterestSelection }>(
+    'SELECT selection FROM user_interest_selections WHERE user_id = $1',
+    [userId],
+  );
+  return r.rows.map((x) => x.selection);
+}
+
 export const usersService = {
   async getMyProfile(userId: string): Promise<MyProfile> {
     const r = await query<{
       id: string;
       email: string;
+      email_verified_at: Date | null;
       first_name: string | null;
       birth_date: Date | null;
-      gender: 'male' | 'female' | null;
+      gender: Gender | null;
       city: string | null;
       bio: string | null;
       is_premium: boolean;
@@ -76,7 +112,7 @@ export const usersService = {
       n_messages: boolean | null;
       n_subscription: boolean | null;
     }>(
-      `SELECT u.id, u.email, u.first_name, u.birth_date, u.gender, u.city, u.bio,
+      `SELECT u.id, u.email, u.email_verified_at, u.first_name, u.birth_date, u.gender, u.city, u.bio,
               u.is_premium, u.language,
               p.interested_in, p.min_age, p.max_age,
               ns.matches_enabled AS n_matches,
@@ -91,14 +127,16 @@ export const usersService = {
     const u = r.rows[0];
     if (!u) throw NotFound('User not found');
 
-    const [photos, languages] = await Promise.all([
+    const [photos, languages, interestSelections] = await Promise.all([
       loadPhotos(userId),
       loadLanguages(userId),
+      loadInterestSelections(userId),
     ]);
 
     return {
       id: u.id,
       email: u.email,
+      emailVerified: u.email_verified_at != null,
       firstName: u.first_name,
       birthDate: u.birth_date ? u.birth_date.toISOString().slice(0, 10) : null,
       age: u.birth_date ? calculateAge(u.birth_date) : null,
@@ -109,6 +147,7 @@ export const usersService = {
       photos,
       isPremium: u.is_premium,
       interestedIn: u.interested_in,
+      interestSelections,
       minAge: u.min_age ?? 18,
       maxAge: u.max_age ?? 99,
       appLanguage: u.language,
@@ -149,11 +188,11 @@ export const usersService = {
         );
       }
 
-      if (
-        input.interestedIn !== undefined ||
-        input.minAge !== undefined ||
-        input.maxAge !== undefined
-      ) {
+      // Reconcile multi-select interest selections + the legacy enum value.
+      const hasNewSelections = input.interestSelections !== undefined;
+      const hasLegacy = input.interestedIn !== undefined;
+
+      if (hasNewSelections || hasLegacy || input.minAge !== undefined || input.maxAge !== undefined) {
         const existing = await client.query<{
           interested_in: 'men' | 'women' | 'both' | null;
           min_age: number;
@@ -163,9 +202,15 @@ export const usersService = {
           [userId],
         );
 
-        const interested = input.interestedIn ?? existing.rows[0]?.interested_in;
+        let interested: 'men' | 'women' | 'both' | null = existing.rows[0]?.interested_in ?? null;
+        if (hasNewSelections) {
+          interested = selectionsToInterestedIn(input.interestSelections!);
+        } else if (hasLegacy && input.interestedIn) {
+          interested = input.interestedIn;
+        }
+
         if (!interested) {
-          throw BadRequest('"interestedIn" must be provided for the first time');
+          throw BadRequest('"interestSelections" must be provided for the first time');
         }
 
         const minAge = input.minAge ?? existing.rows[0]?.min_age ?? 18;
@@ -181,6 +226,34 @@ export const usersService = {
                updated_at    = NOW()`,
           [userId, interested, minAge, maxAge],
         );
+
+        if (hasNewSelections) {
+          await client.query('DELETE FROM user_interest_selections WHERE user_id = $1', [userId]);
+          const seen = new Set<InterestSelection>();
+          for (const sel of input.interestSelections!) {
+            if (seen.has(sel)) continue;
+            seen.add(sel);
+            await client.query(
+              `INSERT INTO user_interest_selections (user_id, selection)
+                 VALUES ($1, $2)
+                 ON CONFLICT (user_id, selection) DO NOTHING`,
+              [userId, sel],
+            );
+          }
+        } else if (hasLegacy) {
+          // Keep the audit table aligned with the legacy single-value choice.
+          await client.query('DELETE FROM user_interest_selections WHERE user_id = $1', [userId]);
+          const mirror: InterestSelection[] =
+            interested === 'both' ? ['everyone'] : interested === 'men' ? ['men'] : ['women'];
+          for (const sel of mirror) {
+            await client.query(
+              `INSERT INTO user_interest_selections (user_id, selection)
+                 VALUES ($1, $2)
+                 ON CONFLICT (user_id, selection) DO NOTHING`,
+              [userId, sel],
+            );
+          }
+        }
       }
 
       if (input.languages) {
