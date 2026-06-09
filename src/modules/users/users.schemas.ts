@@ -1,5 +1,16 @@
 import { z } from 'zod';
 
+export const GENDER_VALUES = [
+  'male',
+  'female',
+  'non_binary',
+  'gender_fluid',
+  'other',
+  'prefer_not_to_say',
+] as const;
+
+export const INTEREST_SELECTION_VALUES = ['men', 'women', 'everyone'] as const;
+
 export const updateProfileSchema = z
   .object({
     firstName: z.string().min(1).max(50).optional(),
@@ -7,13 +18,20 @@ export const updateProfileSchema = z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD')
       .optional(),
-    gender: z.enum(['male', 'female']).optional(),
+    gender: z.enum(GENDER_VALUES).optional(),
+    /** Legacy single-value preference (kept for backwards compat). */
     interestedIn: z.enum(['men', 'women', 'both']).optional(),
+    /** New multi-select preference: "Men", "Women", "Everyone". */
+    interestSelections: z
+      .array(z.enum(INTEREST_SELECTION_VALUES))
+      .min(1)
+      .max(3)
+      .optional(),
     minAge: z.number().int().min(18).max(99).optional(),
     maxAge: z.number().int().min(18).max(99).optional(),
     city: z.string().min(1).max(80).optional(),
     bio: z.string().max(500).optional(),
-    languages: z.array(z.string().min(2).max(20)).max(10).optional(),
+    languages: z.array(z.string().min(2).max(40)).max(20).optional(),
     appLanguage: z.enum(['en', 'es']).optional(),
   })
   .refine(
