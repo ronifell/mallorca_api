@@ -30,11 +30,19 @@ export const env = {
   },
 
   mail: {
+    /** smtp = nodemailer; log = print to console (dev when SMTP ports blocked); resend = HTTPS API */
+    provider: (process.env.EMAIL_PROVIDER ?? 'smtp') as 'smtp' | 'log' | 'resend',
     host: process.env.SMTP_HOST ?? '',
     port: Number(process.env.SMTP_PORT ?? 587),
+    secure:
+      process.env.SMTP_SECURE === 'true' ||
+      (process.env.SMTP_SECURE !== 'false' && Number(process.env.SMTP_PORT ?? 587) === 465),
     user: process.env.SMTP_USER ?? '',
     pass: process.env.SMTP_PASS ?? '',
     from: process.env.MAIL_FROM ?? 'no-reply@citasmallorca.es',
+    resendApiKey: process.env.RESEND_API_KEY ?? '',
+    /** Used with EMAIL_PROVIDER=resend (must be a verified sender in Resend). */
+    resendFrom: process.env.RESEND_FROM ?? '',
   },
 
   storage: {
