@@ -23,6 +23,10 @@ export interface FeedCandidate {
   isPremium: boolean;
 }
 
+export interface LikeUser extends FeedCandidate {
+  likedAt: string;
+}
+
 interface ViewerProfile {
   id: string;
   gender: Gender;
@@ -187,6 +191,31 @@ export const discoveryService = {
   },
 
   /**
+   * Outgoing likes the viewer has sent that did not (yet) become a match.
+   * Excludes blocked users in either direction and non-active accounts.
+   */
+  async getSentLikes(userId: string, limit = 100): Promise<LikeUser[]> {
+    return loadLikedUsers(userId, 'sent', limit);
+  },
+
+  /**
+   * Incoming likes the viewer has received that did not (yet) become a match.
+   * Excludes blocked users in either direction and non-active accounts.
+   */
+  async getReceivedLikes(userId: string, limit = 100): Promise<LikeUser[]> {
+    return loadLikedUsers(userId, 'received', limit);
+  },
+
+  /** Cancel a previously sent like. No-op if the like does not exist. */
+  async unlike(userId: string, targetId: string): Promise<void> {
+    if (userId === targetId) throw BadRequest('Cannot unlike yourself');
+    await query(
+      'DELETE FROM likes WHERE sender_id = $1 AND receiver_id = $2',
+      [userId, targetId],
+    );
+  },
+
+  /**
    * Clears outbound passes and likes that did not become matches so the feed
    * can be shown again from the start with current preference filters.
    */
@@ -315,3 +344,105 @@ export const discoveryService = {
     });
   },
 };
+
+/**
+ * Shared loader for the "likes" lists. Returns up to `limit` users that the
+ * viewer has either liked (sent) or has been liked by (received), excluding
+ * any pair that has already turned into a match or involves a block in either
+ * direction. Hydrates each candidate with their photos and spoken languages
+ * so the result can drop straight into a `FeedCandidate`-shaped card.
+ */
+async function loadLikedUsers(
+  userId: string,
+  direction: 'sent' | 'received',
+  limit: number,
+): Promise<LikeUser[]> {
+  const joinOn = direction === 'sent' ? 'l.receiver_id' : 'l.sender_id';
+  const where = direction === 'sent' ? 'l.sender_id' : 'l.receiver_id';
+
+  const sql = `
+    SELECT
+      u.id, u.first_name, u.birth_date, u.city, u.bio, u.gender, u.is_premium,
+      p.interested_in, l.created_at AS liked_at
+    FROM likes l
+    JOIN users u ON u.id = ${joinOn}
+    LEFT JOIN user_preferences p ON p.user_id = u.id
+    WHERE ${where} = $1
+      AND u.status = 'active'
+      AND NOT EXISTS (
+        SELECT 1 FROM blocks b
+         WHERE (b.blocker_id = $1 AND b.blocked_user_id = u.id)
+            OR (b.blocker_id = u.id AND b.blocked_user_id = $1)
+      )
+      AND NOT EXISTS (
+        SELECT 1 FROM matches m
+         WHERE m.user_a_id = LEAST($1::uuid, u.id)
+           AND m.user_b_id = GREATEST($1::uuid, u.id)
+      )
+    ORDER BY l.created_at DESC
+    LIMIT $2
+  `;
+
+  const r = await query<{
+    id: string;
+    first_name: string | null;
+    birth_date: Date;
+    city: string | null;
+    bio: string | null;
+    gender: Gender | null;
+    is_premium: boolean;
+    interested_in: InterestedIn | null;
+    liked_at: Date;
+  }>(sql, [userId, limit]);
+
+  if (!r.rows.length) return [];
+
+  const ids = r.rows.map((u) => u.id);
+  const photosR = await query<{
+    user_id: string;
+    id: string;
+    image_url: string;
+    storage_key: string | null;
+    order_index: number;
+  }>(
+    `SELECT user_id, id, image_url, storage_key, order_index FROM photos
+     WHERE user_id = ANY($1::uuid[])
+     ORDER BY order_index ASC`,
+    [ids],
+  );
+  const langR = await query<{ user_id: string; language: string }>(
+    `SELECT user_id, language FROM user_languages WHERE user_id = ANY($1::uuid[])`,
+    [ids],
+  );
+
+  const photosByUser = new Map<string, { id: string; url: string; orderIndex: number }[]>();
+  photosR.rows.forEach((p) => {
+    const arr = photosByUser.get(p.user_id) ?? [];
+    arr.push({
+      id: p.id,
+      url: resolveStoredUrl(p.image_url, p.storage_key),
+      orderIndex: p.order_index,
+    });
+    photosByUser.set(p.user_id, arr);
+  });
+  const langsByUser = new Map<string, string[]>();
+  langR.rows.forEach((l) => {
+    const arr = langsByUser.get(l.user_id) ?? [];
+    arr.push(l.language);
+    langsByUser.set(l.user_id, arr);
+  });
+
+  return r.rows.map((u) => ({
+    id: u.id,
+    firstName: u.first_name,
+    age: calculateAge(u.birth_date),
+    city: u.city,
+    bio: u.bio,
+    gender: u.gender,
+    interestedIn: u.interested_in,
+    photos: photosByUser.get(u.id) ?? [],
+    languages: langsByUser.get(u.id) ?? [],
+    isPremium: u.is_premium,
+    likedAt: u.liked_at.toISOString(),
+  }));
+}
