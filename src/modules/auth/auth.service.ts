@@ -29,6 +29,10 @@ function buildVerifyUrl(rawToken: string): string {
   return `${base}/api/auth/verify-email?token=${encodeURIComponent(rawToken)}`;
 }
 
+function buildAppVerifyDeepLink(rawToken: string): string {
+  return `${env.app.deepLinkScheme}://verify-email?token=${encodeURIComponent(rawToken)}`;
+}
+
 async function issueVerificationToken(userId: string): Promise<string> {
   const raw = crypto.randomBytes(32).toString('hex');
   const tokenHash = crypto.createHash('sha256').update(raw).digest('hex');
@@ -48,7 +52,8 @@ async function sendVerificationEmail(
 ): Promise<void> {
   const raw = await issueVerificationToken(userId);
   const verifyUrl = buildVerifyUrl(raw);
-  const tpl = welcomeVerificationEmail({ firstName, verifyUrl });
+  const appVerifyUrl = buildAppVerifyDeepLink(raw);
+  const tpl = welcomeVerificationEmail({ firstName, verifyUrl, appVerifyUrl });
   await sendMail({ to: email, subject: tpl.subject, html: tpl.html, text: tpl.text });
 }
 

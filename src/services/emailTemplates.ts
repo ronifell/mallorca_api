@@ -21,6 +21,7 @@ const BRAND = {
 interface VerifyEmailVars {
   firstName?: string | null;
   verifyUrl: string;
+  appVerifyUrl: string;
 }
 
 function escape(s: string): string {
@@ -81,6 +82,7 @@ export function welcomeVerificationEmail(vars: VerifyEmailVars): {
 } {
   const greetingEs = vars.firstName ? `¡Hola, ${escape(vars.firstName)}!` : '¡Hola!';
   const greetingEn = vars.firstName ? `Hi ${escape(vars.firstName)}!` : 'Hello!';
+  const safeAppUrl = escape(vars.appVerifyUrl);
   const safeUrl = escape(vars.verifyUrl);
 
   const inner = `
@@ -92,13 +94,13 @@ export function welcomeVerificationEmail(vars: VerifyEmailVars): {
     </p>
     <table cellpadding="0" cellspacing="0" border="0" style="margin:18px 0;">
       <tr><td align="center" bgcolor="${BRAND.coral}" style="border-radius:999px;">
-        <a href="${safeUrl}" style="display:inline-block;padding:14px 26px;color:${BRAND.white};font-weight:700;text-decoration:none;font-size:15px;border-radius:999px;">
+        <a href="${safeAppUrl}" style="display:inline-block;padding:14px 26px;color:${BRAND.white};font-weight:700;text-decoration:none;font-size:15px;border-radius:999px;">
           Confirmar mi cuenta
         </a>
       </td></tr>
     </table>
     <p style="margin:0 0 10px 0;font-size:13px;color:${BRAND.inkSoft};">
-      Si el botón no funciona, copia y pega este enlace en tu navegador:<br />
+      Si el botón no abre la app, copia y pega este enlace en tu navegador:<br />
       <a href="${safeUrl}" style="color:${BRAND.coral};word-break:break-all;">${safeUrl}</a>
     </p>
     <hr style="border:none;border-top:1px solid ${BRAND.border};margin:24px 0;" />
@@ -120,7 +122,8 @@ export function welcomeVerificationEmail(vars: VerifyEmailVars): {
     text:
       `${greetingEs}\n\nBienvenido a la comunidad de Citas Mallorca. ` +
       `Nos alegra tenerte aquí. Pulsa el siguiente enlace para confirmar tu ` +
-      `perfil y empezar a conectar con otras personas:\n\n${vars.verifyUrl}\n\n` +
+      `perfil y empezar a conectar con otras personas:\n\n${vars.appVerifyUrl}\n\n` +
+      `Enlace alternativo en el navegador:\n${vars.verifyUrl}\n\n` +
       `${greetingEn}\nWelcome to the Citas Mallorca community. We're glad to ` +
       `have you here. Click the link above to confirm your profile and start ` +
       `connecting with others.\n\nwww.citasmallorca.es`,
