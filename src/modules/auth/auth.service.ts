@@ -12,6 +12,7 @@ import {
   verifyRefreshToken,
 } from '../../utils/jwt';
 import { hashPassword, isStrongPassword, verifyPassword } from '../../utils/password';
+import { logger } from '../../utils/logger';
 import {
   ForgotPasswordInput,
   LoginInput,
@@ -45,11 +46,12 @@ async function sendVerificationEmail(
   userId: string,
   email: string,
   firstName: string | null,
-): Promise<void> {
+): Promise<string> {
   const raw = await issueVerificationToken(userId);
   const verifyUrl = buildVerifyUrl(raw);
   const tpl = welcomeVerificationEmail({ firstName, verifyUrl });
   await sendMail({ to: email, subject: tpl.subject, html: tpl.html, text: tpl.text });
+  return verifyUrl;
 }
 
 interface AuthTokens {
@@ -162,19 +164,21 @@ export const authService = {
       return u;
     });
 
-    // Best-effort: send the welcome / verification email. We never fail the
-    // registration if SMTP is misconfigured (the user can still resend later).
-    try {
-      await sendVerificationEmail(inserted.id, inserted.email, null);
-    } catch {
-      // ignored on purpose
-    }
-
     const tokens = await issueTokens({
       id: inserted.id,
       email: inserted.email,
       role,
       isPremium: false,
+    });
+
+    // Send welcome / verification email in the background so a slow or
+    // misconfigured SMTP server cannot delay (or break) registration.
+    void sendVerificationEmail(inserted.id, inserted.email, null).catch((err) => {
+      logger.warn('Verification email failed after register', {
+        userId: inserted.id,
+        email: inserted.email,
+        err: err instanceof Error ? err.message : String(err),
+      });
     });
 
     return {
@@ -264,7 +268,9 @@ export const authService = {
     return { verified: true };
   },
 
-  async resendVerification(input: ResendVerificationInput): Promise<void> {
+  async resendVerification(
+    input: ResendVerificationInput,
+  ): Promise<{ verifyUrl?: string }> {
     const r = await query<{
       id: string;
       email: string;
@@ -276,12 +282,21 @@ export const authService = {
     );
     const user = r.rows[0];
     // Always succeed (no enumeration). Skip if missing or already verified.
-    if (!user || user.email_verified_at) return;
+    if (!user || user.email_verified_at) return {};
     try {
-      await sendVerificationEmail(user.id, user.email, user.first_name);
-    } catch {
-      // best effort
+      const verifyUrl = await sendVerificationEmail(user.id, user.email, user.first_name);
+      // When EMAIL_PROVIDER=log, SMTP is not used — return the link for in-app testing.
+      if (env.mail.provider === 'log') {
+        return { verifyUrl };
+      }
+    } catch (err) {
+      logger.warn('Verification email failed on resend', {
+        userId: user.id,
+        email: user.email,
+        err: err instanceof Error ? err.message : String(err),
+      });
     }
+    return {};
   },
 
   async refresh(input: RefreshInput): Promise<AuthTokens> {
