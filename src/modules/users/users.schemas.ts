@@ -11,6 +11,15 @@ export const GENDER_VALUES = [
 
 export const INTEREST_SELECTION_VALUES = ['men', 'women', 'everyone'] as const;
 
+export const RELATIONSHIP_GOAL_VALUES = [
+  'love',
+  'friendship',
+  'chat',
+  'casual',
+  'serious',
+  'long_term',
+] as const;
+
 export const updateProfileSchema = z
   .object({
     firstName: z.string().min(1).max(50).optional(),
@@ -26,6 +35,11 @@ export const updateProfileSchema = z
       .array(z.enum(INTEREST_SELECTION_VALUES))
       .min(1)
       .max(3)
+      .optional(),
+    /** Multi-select relationship goal preference. */
+    relationshipGoals: z
+      .array(z.enum(RELATIONSHIP_GOAL_VALUES))
+      .max(RELATIONSHIP_GOAL_VALUES.length)
       .optional(),
     minAge: z.number().int().min(18).max(99).optional(),
     maxAge: z.number().int().min(18).max(99).optional(),

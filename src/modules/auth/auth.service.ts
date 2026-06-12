@@ -112,6 +112,7 @@ async function profileComplete(userId: string): Promise<boolean> {
         AND u.city IS NOT NULL
         AND p.interested_in IS NOT NULL
         AND EXISTS (SELECT 1 FROM photos ph WHERE ph.user_id = u.id)
+        AND EXISTS (SELECT 1 FROM user_relationship_goals rg WHERE rg.user_id = u.id)
       ) AS ok
     FROM users u
     LEFT JOIN user_preferences p ON p.user_id = u.id

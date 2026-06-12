@@ -11,6 +11,14 @@ import { logger } from '../utils/logger';
 const SEED_EMAIL_DOMAIN = '@seed.citasmallorca.local';
 const SEED_PASSWORD = 'DemoSeed1!';
 
+type RelationshipGoal =
+  | 'love'
+  | 'friendship'
+  | 'chat'
+  | 'casual'
+  | 'serious'
+  | 'long_term';
+
 interface SeedProfile {
   email: string;
   firstName: string;
@@ -21,6 +29,9 @@ interface SeedProfile {
   bio: string;
   languages: string[];
   photoSeed: string;
+  relationshipGoals: RelationshipGoal[];
+  minAge?: number;
+  maxAge?: number;
 }
 
 const PROFILES: SeedProfile[] = [
@@ -34,6 +45,9 @@ const PROFILES: SeedProfile[] = [
     bio: 'Coffee, coast walks, and good conversation.',
     languages: ['es', 'en'],
     photoSeed: 'sofia',
+    relationshipGoals: ['love', 'serious'],
+    minAge: 25,
+    maxAge: 40,
   },
   {
     email: `lucia.ferrer${SEED_EMAIL_DOMAIN}`,
@@ -45,6 +59,9 @@ const PROFILES: SeedProfile[] = [
     bio: 'Yoga at sunrise, tapas at sunset.',
     languages: ['es', 'ca'],
     photoSeed: 'lucia',
+    relationshipGoals: ['long_term', 'love'],
+    minAge: 27,
+    maxAge: 45,
   },
   {
     email: `emma.walsh${SEED_EMAIL_DOMAIN}`,
@@ -56,6 +73,9 @@ const PROFILES: SeedProfile[] = [
     bio: 'New to the island — show me your favourite beach.',
     languages: ['en'],
     photoSeed: 'emma',
+    relationshipGoals: ['friendship', 'chat', 'casual'],
+    minAge: 22,
+    maxAge: 35,
   },
   {
     email: `marco.rossi${SEED_EMAIL_DOMAIN}`,
@@ -67,6 +87,9 @@ const PROFILES: SeedProfile[] = [
     bio: 'Cycling, sailing, and weekend markets.',
     languages: ['it', 'en', 'es'],
     photoSeed: 'marco',
+    relationshipGoals: ['serious', 'long_term'],
+    minAge: 26,
+    maxAge: 42,
   },
   {
     email: `david.chen${SEED_EMAIL_DOMAIN}`,
@@ -78,6 +101,9 @@ const PROFILES: SeedProfile[] = [
     bio: 'Remote dev who traded the city for the sea.',
     languages: ['en'],
     photoSeed: 'david',
+    relationshipGoals: ['casual', 'friendship'],
+    minAge: 24,
+    maxAge: 38,
   },
   {
     email: `pau.vidal${SEED_EMAIL_DOMAIN}`,
@@ -89,6 +115,9 @@ const PROFILES: SeedProfile[] = [
     bio: 'Music, hiking, and finding the quiet calas.',
     languages: ['ca', 'es'],
     photoSeed: 'pau',
+    relationshipGoals: ['love', 'long_term'],
+    minAge: 23,
+    maxAge: 40,
   },
 ];
 
@@ -130,9 +159,17 @@ async function insertProfile(profile: SeedProfile, passwordHash: string): Promis
 
     await client.query(
       `INSERT INTO user_preferences (user_id, interested_in, min_age, max_age)
-       VALUES ($1, $2, 18, 99)`,
-      [userId, profile.interestedIn],
+       VALUES ($1, $2, $3, $4)`,
+      [userId, profile.interestedIn, profile.minAge ?? 18, profile.maxAge ?? 99],
     );
+
+    for (const goal of profile.relationshipGoals) {
+      await client.query(
+        `INSERT INTO user_relationship_goals (user_id, goal) VALUES ($1, $2)
+         ON CONFLICT (user_id, goal) DO NOTHING`,
+        [userId, goal],
+      );
+    }
 
     await client.query(
       `INSERT INTO notification_settings (user_id) VALUES ($1)

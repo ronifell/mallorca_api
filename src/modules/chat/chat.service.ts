@@ -1,5 +1,5 @@
 import { query, withTransaction } from '../../config/database';
-import { resolveStoredUrl, uploadImage } from '../../services/storage';
+import { resolveStoredUrl, uploadAudio, uploadImage } from '../../services/storage';
 import { BadRequest, Forbidden, NotFound } from '../../utils/errors';
 
 export interface ConversationContext {
@@ -74,15 +74,23 @@ export const chatService = {
   async sendMessage(
     senderId: string,
     conversationId: string,
-    input: { type: 'text' | 'image'; text?: string; imageUrl?: string },
+    input: {
+      type: 'text' | 'image' | 'audio';
+      text?: string;
+      imageUrl?: string;
+      audioUrl?: string;
+      audioDuration?: number;
+    },
   ): Promise<{
     id: string;
     conversationId: string;
     senderId: string;
     receiverId: string;
-    type: 'text' | 'image';
+    type: 'text' | 'image' | 'audio';
     text: string | null;
     imageUrl: string | null;
+    audioUrl: string | null;
+    audioDuration: number | null;
     createdAt: string;
   }> {
     const ctx = await loadConversation(conversationId);
@@ -101,10 +109,20 @@ export const chatService = {
 
     const insertedId = await withTransaction(async (client) => {
       const r = await client.query<{ id: string; created_at: Date }>(
-        `INSERT INTO messages (conversation_id, sender_id, type, text, image_url)
-           VALUES ($1, $2, $3, $4, $5)
+        `INSERT INTO messages (
+           conversation_id, sender_id, type, text, image_url, audio_url, audio_duration
+         )
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
            RETURNING id, created_at`,
-        [conversationId, senderId, input.type, input.text ?? null, input.imageUrl ?? null],
+        [
+          conversationId,
+          senderId,
+          input.type,
+          input.text ?? null,
+          input.imageUrl ?? null,
+          input.audioUrl ?? null,
+          input.audioDuration ?? null,
+        ],
       );
       const msg = r.rows[0];
 
@@ -126,6 +144,8 @@ export const chatService = {
       type: input.type,
       text: input.text ?? null,
       imageUrl: input.imageUrl ? resolveStoredUrl(input.imageUrl) : null,
+      audioUrl: input.audioUrl ? resolveStoredUrl(input.audioUrl) : null,
+      audioDuration: input.audioDuration ?? null,
       createdAt: insertedId.createdAt.toISOString(),
     };
   },
@@ -145,6 +165,34 @@ export const chatService = {
     assertParticipant(ctx, senderId);
 
     const stored = await uploadImage(buffer, mime, `chat/${conversationId}`, publicOrigin);
+    return { url: stored.url };
+  },
+
+  async uploadAudio(
+    senderId: string,
+    conversationId: string,
+    buffer: Buffer,
+    mime: string,
+    publicOrigin?: string,
+  ) {
+    const accepted = [
+      'audio/m4a',
+      'audio/mp4',
+      'audio/x-m4a',
+      'audio/aac',
+      'audio/mpeg',
+      'audio/ogg',
+      'audio/wav',
+      'audio/webm',
+    ];
+    if (!accepted.includes(mime.toLowerCase())) {
+      throw BadRequest('Unsupported audio type. Use M4A, AAC, MP3, OGG or WAV');
+    }
+    const ctx = await loadConversation(conversationId);
+    if (!ctx) throw NotFound('Conversation not found');
+    assertParticipant(ctx, senderId);
+
+    const stored = await uploadAudio(buffer, mime, `chat/${conversationId}/audio`, publicOrigin);
     return { url: stored.url };
   },
 
@@ -168,14 +216,17 @@ export const chatService = {
     const r = await query<{
       id: string;
       sender_id: string;
-      type: 'text' | 'image';
+      type: 'text' | 'image' | 'audio';
       text: string | null;
       image_url: string | null;
+      audio_url: string | null;
+      audio_duration: number | null;
       delivered_at: Date | null;
       read_at: Date | null;
       created_at: Date;
     }>(
-      `SELECT id, sender_id, type, text, image_url, delivered_at, read_at, created_at
+      `SELECT id, sender_id, type, text, image_url, audio_url, audio_duration,
+              delivered_at, read_at, created_at
        FROM messages
        WHERE conversation_id = $1 ${whereExtra}
        ORDER BY created_at DESC
@@ -191,6 +242,8 @@ export const chatService = {
         type: m.type,
         text: m.text,
         imageUrl: m.image_url ? resolveStoredUrl(m.image_url) : null,
+        audioUrl: m.audio_url ? resolveStoredUrl(m.audio_url) : null,
+        audioDuration: m.audio_duration ?? null,
         deliveredAt: m.delivered_at ? m.delivered_at.toISOString() : null,
         readAt: m.read_at ? m.read_at.toISOString() : null,
         createdAt: m.created_at.toISOString(),
