@@ -10,6 +10,14 @@ import {
   isMutuallyCompatible,
 } from './compatibility';
 
+export type RelationshipGoal =
+  | 'love'
+  | 'friendship'
+  | 'chat'
+  | 'casual'
+  | 'serious'
+  | 'long_term';
+
 export interface FeedCandidate {
   id: string;
   firstName: string | null;
@@ -21,6 +29,9 @@ export interface FeedCandidate {
   photos: { id: string; url: string; orderIndex: number }[];
   languages: string[];
   isPremium: boolean;
+  relationshipGoals: RelationshipGoal[];
+  minAge: number;
+  maxAge: number;
 }
 
 export interface LikeUser extends FeedCandidate {
@@ -85,7 +96,8 @@ export const discoveryService = {
     const acceptableInterests = interestsAcceptingGender(viewer.gender);
 
     const sql = `
-      SELECT u.id, u.first_name, u.birth_date, u.city, u.bio, u.gender, u.is_premium, p.interested_in
+      SELECT u.id, u.first_name, u.birth_date, u.city, u.bio, u.gender, u.is_premium,
+             p.interested_in, p.min_age, p.max_age
       FROM users u
       JOIN user_preferences p ON p.user_id = u.id
       WHERE u.id <> $1
@@ -129,6 +141,8 @@ export const discoveryService = {
       gender: Gender | null;
       is_premium: boolean;
       interested_in: InterestedIn | null;
+      min_age: number | null;
+      max_age: number | null;
     }>(sql, [
       viewer.id,
       acceptedGenders,
@@ -158,6 +172,10 @@ export const discoveryService = {
       `SELECT user_id, language FROM user_languages WHERE user_id = ANY($1::uuid[])`,
       [ids],
     );
+    const goalsR = await query<{ user_id: string; goal: RelationshipGoal }>(
+      `SELECT user_id, goal FROM user_relationship_goals WHERE user_id = ANY($1::uuid[])`,
+      [ids],
+    );
 
     const photosByUser = new Map<string, { id: string; url: string; orderIndex: number }[]>();
     photosR.rows.forEach((p) => {
@@ -175,6 +193,12 @@ export const discoveryService = {
       arr.push(l.language);
       langsByUser.set(l.user_id, arr);
     });
+    const goalsByUser = new Map<string, RelationshipGoal[]>();
+    goalsR.rows.forEach((g) => {
+      const arr = goalsByUser.get(g.user_id) ?? [];
+      arr.push(g.goal);
+      goalsByUser.set(g.user_id, arr);
+    });
 
     return r.rows.map((u) => ({
       id: u.id,
@@ -187,6 +211,9 @@ export const discoveryService = {
       photos: photosByUser.get(u.id) ?? [],
       languages: langsByUser.get(u.id) ?? [],
       isPremium: u.is_premium,
+      relationshipGoals: goalsByUser.get(u.id) ?? [],
+      minAge: u.min_age ?? 18,
+      maxAge: u.max_age ?? 99,
     }));
   },
 
@@ -363,7 +390,7 @@ async function loadLikedUsers(
   const sql = `
     SELECT
       u.id, u.first_name, u.birth_date, u.city, u.bio, u.gender, u.is_premium,
-      p.interested_in, l.created_at AS liked_at
+      p.interested_in, p.min_age, p.max_age, l.created_at AS liked_at
     FROM likes l
     JOIN users u ON u.id = ${joinOn}
     LEFT JOIN user_preferences p ON p.user_id = u.id
@@ -392,6 +419,8 @@ async function loadLikedUsers(
     gender: Gender | null;
     is_premium: boolean;
     interested_in: InterestedIn | null;
+    min_age: number | null;
+    max_age: number | null;
     liked_at: Date;
   }>(sql, [userId, limit]);
 
@@ -414,6 +443,10 @@ async function loadLikedUsers(
     `SELECT user_id, language FROM user_languages WHERE user_id = ANY($1::uuid[])`,
     [ids],
   );
+  const goalsR = await query<{ user_id: string; goal: RelationshipGoal }>(
+    `SELECT user_id, goal FROM user_relationship_goals WHERE user_id = ANY($1::uuid[])`,
+    [ids],
+  );
 
   const photosByUser = new Map<string, { id: string; url: string; orderIndex: number }[]>();
   photosR.rows.forEach((p) => {
@@ -431,6 +464,12 @@ async function loadLikedUsers(
     arr.push(l.language);
     langsByUser.set(l.user_id, arr);
   });
+  const goalsByUser = new Map<string, RelationshipGoal[]>();
+  goalsR.rows.forEach((g) => {
+    const arr = goalsByUser.get(g.user_id) ?? [];
+    arr.push(g.goal);
+    goalsByUser.set(g.user_id, arr);
+  });
 
   return r.rows.map((u) => ({
     id: u.id,
@@ -443,6 +482,9 @@ async function loadLikedUsers(
     photos: photosByUser.get(u.id) ?? [],
     languages: langsByUser.get(u.id) ?? [],
     isPremium: u.is_premium,
+    relationshipGoals: goalsByUser.get(u.id) ?? [],
+    minAge: u.min_age ?? 18,
+    maxAge: u.max_age ?? 99,
     likedAt: u.liked_at.toISOString(),
   }));
 }

@@ -4,6 +4,7 @@ import { calculateAge } from '../../utils/age';
 import { NotFound } from '../../utils/errors';
 
 import type { Gender } from '../discovery/compatibility';
+import type { RelationshipGoal } from '../discovery/discovery.service';
 
 export interface MatchUserProfile {
   matchId: string;
@@ -19,6 +20,9 @@ export interface MatchUserProfile {
     photos: { id: string; url: string; orderIndex: number }[];
     interestedIn: 'men' | 'women' | 'both' | null;
     isPremium: boolean;
+    relationshipGoals: RelationshipGoal[];
+    minAge: number;
+    maxAge: number;
   };
 }
 
@@ -38,7 +42,7 @@ export interface MatchListItem {
   lastMessage: {
     id: string;
     text: string | null;
-    type: 'text' | 'image';
+    type: 'text' | 'image' | 'audio';
     senderId: string;
     createdAt: string;
   } | null;
@@ -59,7 +63,7 @@ export const matchesService = {
       cover_photo: string | null;
       last_message_id: string | null;
       last_message_text: string | null;
-      last_message_type: 'text' | 'image' | null;
+      last_message_type: 'text' | 'image' | 'audio' | null;
       last_message_sender: string | null;
       last_message_created: Date | null;
       unread_count: string;
@@ -126,7 +130,7 @@ export const matchesService = {
         ? {
             id: row.last_message_id,
             text: row.last_message_text,
-            type: (row.last_message_type ?? 'text') as 'text' | 'image',
+            type: (row.last_message_type ?? 'text') as 'text' | 'image' | 'audio',
             senderId: row.last_message_sender!,
             createdAt: row.last_message_created!.toISOString(),
           }
@@ -156,6 +160,8 @@ export const matchesService = {
       other_bio: string | null;
       other_is_premium: boolean;
       other_interested_in: 'men' | 'women' | 'both' | null;
+      other_min_age: number | null;
+      other_max_age: number | null;
     }>(
       `
       SELECT
@@ -168,7 +174,9 @@ export const matchesService = {
         ou.city AS other_city,
         ou.bio AS other_bio,
         ou.is_premium AS other_is_premium,
-        p.interested_in AS other_interested_in
+        p.interested_in AS other_interested_in,
+        p.min_age AS other_min_age,
+        p.max_age AS other_max_age
       FROM matches m
       JOIN users ou ON ou.id = CASE WHEN m.user_a_id = $1 THEN m.user_b_id ELSE m.user_a_id END
       LEFT JOIN user_preferences p ON p.user_id = ou.id
@@ -188,13 +196,17 @@ export const matchesService = {
     const row = r.rows[0];
     if (!row) throw NotFound('Match not found');
 
-    const [photos, languages] = await Promise.all([
+    const [photos, languages, goals] = await Promise.all([
       query<{ id: string; image_url: string; storage_key: string | null; order_index: number }>(
         `SELECT id, image_url, storage_key, order_index FROM photos WHERE user_id = $1 ORDER BY order_index ASC`,
         [row.other_id],
       ),
       query<{ language: string }>(
         'SELECT language FROM user_languages WHERE user_id = $1',
+        [row.other_id],
+      ),
+      query<{ goal: RelationshipGoal }>(
+        'SELECT goal FROM user_relationship_goals WHERE user_id = $1',
         [row.other_id],
       ),
     ]);
@@ -217,6 +229,9 @@ export const matchesService = {
         })),
         interestedIn: row.other_interested_in,
         isPremium: row.other_is_premium,
+        relationshipGoals: goals.rows.map((g) => g.goal),
+        minAge: row.other_min_age ?? 18,
+        maxAge: row.other_max_age ?? 99,
       },
     };
   },

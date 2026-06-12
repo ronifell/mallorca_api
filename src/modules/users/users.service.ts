@@ -8,6 +8,13 @@ import { UpdateProfileInput } from './users.schemas';
 const MAX_PHOTOS = 6;
 
 export type InterestSelection = 'men' | 'women' | 'everyone';
+export type RelationshipGoal =
+  | 'love'
+  | 'friendship'
+  | 'chat'
+  | 'casual'
+  | 'serious'
+  | 'long_term';
 
 export interface PublicProfile {
   id: string;
@@ -19,6 +26,10 @@ export interface PublicProfile {
   languages: string[];
   photos: { id: string; url: string; orderIndex: number }[];
   isPremium: boolean;
+  relationshipGoals: RelationshipGoal[];
+  /** Age range the user is looking for (exposed publicly on the profile). */
+  minAge: number;
+  maxAge: number;
 }
 
 export interface MyProfile extends PublicProfile {
@@ -28,8 +39,6 @@ export interface MyProfile extends PublicProfile {
   interestedIn: 'men' | 'women' | 'both' | null;
   /** Raw multi-select user-facing selections. */
   interestSelections: InterestSelection[];
-  minAge: number;
-  maxAge: number;
   appLanguage: string;
   notifications: {
     matches: boolean;
@@ -92,6 +101,14 @@ async function loadInterestSelections(userId: string): Promise<InterestSelection
   return r.rows.map((x) => x.selection);
 }
 
+async function loadRelationshipGoals(userId: string): Promise<RelationshipGoal[]> {
+  const r = await query<{ goal: RelationshipGoal }>(
+    'SELECT goal FROM user_relationship_goals WHERE user_id = $1',
+    [userId],
+  );
+  return r.rows.map((x) => x.goal);
+}
+
 export const usersService = {
   async getMyProfile(userId: string): Promise<MyProfile> {
     const r = await query<{
@@ -127,10 +144,11 @@ export const usersService = {
     const u = r.rows[0];
     if (!u) throw NotFound('User not found');
 
-    const [photos, languages, interestSelections] = await Promise.all([
+    const [photos, languages, interestSelections, relationshipGoals] = await Promise.all([
       loadPhotos(userId),
       loadLanguages(userId),
       loadInterestSelections(userId),
+      loadRelationshipGoals(userId),
     ]);
 
     return {
@@ -148,6 +166,7 @@ export const usersService = {
       isPremium: u.is_premium,
       interestedIn: u.interested_in,
       interestSelections,
+      relationshipGoals,
       minAge: u.min_age ?? 18,
       maxAge: u.max_age ?? 99,
       appLanguage: u.language,
@@ -262,6 +281,21 @@ export const usersService = {
           await client.query(
             'INSERT INTO user_languages (user_id, language) VALUES ($1, $2) ON CONFLICT DO NOTHING',
             [userId, lang],
+          );
+        }
+      }
+
+      if (input.relationshipGoals) {
+        await client.query('DELETE FROM user_relationship_goals WHERE user_id = $1', [userId]);
+        const seenGoal = new Set<RelationshipGoal>();
+        for (const goal of input.relationshipGoals) {
+          if (seenGoal.has(goal)) continue;
+          seenGoal.add(goal);
+          await client.query(
+            `INSERT INTO user_relationship_goals (user_id, goal)
+               VALUES ($1, $2)
+               ON CONFLICT (user_id, goal) DO NOTHING`,
+            [userId, goal],
           );
         }
       }

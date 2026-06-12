@@ -131,7 +131,33 @@ export async function uploadImage(
 ): Promise<StoredObject> {
   const ext = mime === 'image/png' ? 'png' : mime === 'image/webp' ? 'webp' : 'jpg';
   const key = `${prefix}/${new Date().toISOString().slice(0, 10)}/${uuidv4()}.${ext}`;
+  return storeObject(buffer, mime, key, publicOrigin, 'Image');
+}
 
+export async function uploadAudio(
+  buffer: Buffer,
+  mime: string,
+  prefix = 'audio',
+  publicOrigin?: string,
+): Promise<StoredObject> {
+  const normalized = mime.toLowerCase();
+  let ext = 'm4a';
+  if (normalized.includes('mpeg')) ext = 'mp3';
+  else if (normalized.includes('wav')) ext = 'wav';
+  else if (normalized.includes('ogg')) ext = 'ogg';
+  else if (normalized.includes('webm')) ext = 'webm';
+  else if (normalized.includes('aac')) ext = 'aac';
+  const key = `${prefix}/${new Date().toISOString().slice(0, 10)}/${uuidv4()}.${ext}`;
+  return storeObject(buffer, mime, key, publicOrigin, 'Audio');
+}
+
+async function storeObject(
+  buffer: Buffer,
+  mime: string,
+  key: string,
+  publicOrigin: string | undefined,
+  label: string,
+): Promise<StoredObject> {
   const client = getClient();
   if (!client) {
     // Dev fallback: write to local uploads/ folder.
@@ -140,7 +166,7 @@ export async function uploadImage(
     await fs.writeFile(path.join(process.cwd(), 'uploads', key), buffer);
     const base = (publicOrigin ?? env.apiBaseUrl).replace(/\/$/, '');
     const url = `${base}/uploads/${key}`;
-    logger.info('Image stored locally (dev mode)', { key, url });
+    logger.info(`${label} stored locally (dev mode)`, { key, url });
     return { key, url };
   }
 

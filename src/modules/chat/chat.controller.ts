@@ -69,6 +69,22 @@ export const chatController = {
     res.status(201).json(result);
   },
 
+  async uploadAudio(req: Request, res: Response) {
+    if (!req.file) {
+      res.status(400).json({ error: { code: 'BAD_REQUEST', message: 'No file uploaded' } });
+      return;
+    }
+    const { id } = conversationParamsSchema.parse(req.params);
+    const result = await chatService.uploadAudio(
+      userId(req),
+      id,
+      req.file.buffer,
+      req.file.mimetype,
+      requestPublicOrigin(req),
+    );
+    res.status(201).json(result);
+  },
+
   async markRead(req: Request, res: Response) {
     const { id } = conversationParamsSchema.parse(req.params);
     await chatService.markRead(userId(req), id);

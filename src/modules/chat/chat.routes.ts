@@ -16,6 +16,7 @@ router.post('/matches/:matchId/conversation', asyncHandler(chatController.create
 router.get('/conversations/:id/messages', asyncHandler(chatController.list));
 router.post('/conversations/:id/messages', asyncHandler(chatController.send));
 router.post('/conversations/:id/images', upload.single('image'), asyncHandler(chatController.uploadImage));
+router.post('/conversations/:id/audio', upload.single('audio'), asyncHandler(chatController.uploadAudio));
 router.post('/conversations/:id/read', asyncHandler(chatController.markRead));
 
 export default router;
