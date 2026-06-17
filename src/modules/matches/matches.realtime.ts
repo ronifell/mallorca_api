@@ -1,0 +1,84 @@
+/**
+ * Real-time push for new matches.
+ *
+ * When a like becomes a match, we emit a `match:new` socket event to BOTH
+ * users so that the celebration modal can appear on each device in real
+ * time — not just on the screen of the user who tapped "like" last (whose
+ * client already learned about the match from the HTTP response).
+ *
+ * The payload is sized to be exactly what the `MatchModal` component needs:
+ * the OTHER user's id / firstName / first photo URL and the matchId so the
+ * "Send a message" CTA can open the conversation directly.
+ */
+import { query } from '../../config/database';
+import { resolveStoredUrl } from '../../services/storage';
+import { getIO } from '../../sockets/io';
+import { logger } from '../../utils/logger';
+
+interface MatchEventUser {
+  id: string;
+  firstName: string | null;
+  photo: string | null;
+}
+
+async function loadMatchUsers(
+  userAId: string,
+  userBId: string,
+): Promise<Record<string, MatchEventUser> | null> {
+  const r = await query<{
+    id: string;
+    first_name: string | null;
+    image_url: string | null;
+    storage_key: string | null;
+  }>(
+    `SELECT u.id,
+            u.first_name,
+            (SELECT image_url   FROM photos WHERE user_id = u.id ORDER BY order_index ASC LIMIT 1) AS image_url,
+            (SELECT storage_key FROM photos WHERE user_id = u.id ORDER BY order_index ASC LIMIT 1) AS storage_key
+       FROM users u
+      WHERE u.id IN ($1, $2)`,
+    [userAId, userBId],
+  );
+  if (r.rowCount !== 2) return null;
+  const out: Record<string, MatchEventUser> = {};
+  for (const row of r.rows) {
+    out[row.id] = {
+      id: row.id,
+      firstName: row.first_name,
+      photo: row.image_url ? resolveStoredUrl(row.image_url, row.storage_key) : null,
+    };
+  }
+  return out;
+}
+
+/**
+ * Emit `match:new` to each user, with the OTHER user's lightweight profile.
+ *
+ * Fire-and-forget. Any DB or socket error is logged but does not bubble up,
+ * because the match itself has already been persisted and the HTTP response
+ * is independent of this side effect.
+ */
+export async function emitMatchEvents(
+  userAId: string,
+  userBId: string,
+  matchId: string,
+): Promise<void> {
+  try {
+    const users = await loadMatchUsers(userAId, userBId);
+    if (!users) return;
+    const a = users[userAId];
+    const b = users[userBId];
+    if (!a || !b) return;
+
+    const io = getIO();
+    io.to(`user:${userAId}`).emit('match:new', { matchId, otherUser: b });
+    io.to(`user:${userBId}`).emit('match:new', { matchId, otherUser: a });
+  } catch (e) {
+    logger.error('emitMatchEvents failed', {
+      err: e instanceof Error ? e.message : String(e),
+      userAId,
+      userBId,
+      matchId,
+    });
+  }
+}

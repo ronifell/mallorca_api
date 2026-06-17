@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import { Unauthorized } from '../../utils/errors';
 import { feedQuerySchema, likeParamsSchema } from './discovery.schemas';
 import { discoveryService } from './discovery.service';
+import { emitMatchEvents } from '../matches/matches.realtime';
 import { notificationsService } from '../notifications/notifications.service';
 
 function userId(req: Request): string {
@@ -19,9 +20,11 @@ export const discoveryController = {
   async like(req: Request, res: Response) {
     const { id } = likeParamsSchema.parse(req.params);
     const result = await discoveryService.like(userId(req), id);
-    if (result.matched) {
-      // Fire & forget: notify both users. We do not await to keep latency low.
+    if (result.matched && result.matchId) {
+      // Fire & forget: push notification + real-time socket emit. Neither
+      // blocks the HTTP response so latency stays tight.
       void notificationsService.notifyNewMatch(userId(req), id);
+      void emitMatchEvents(userId(req), id, result.matchId);
     }
     res.json(result);
   },
