@@ -58,6 +58,13 @@ export const env = {
     serviceAccountJson: process.env.GOOGLE_SERVICE_ACCOUNT_JSON ?? '',
   },
 
+  googleAuth: {
+    /** Web OAuth client ID — used to verify Google ID tokens from the mobile app. */
+    clientId: process.env.GOOGLE_CLIENT_ID ?? '',
+    /** Optional iOS client ID (second allowed audience for verifyIdToken). */
+    iosClientId: process.env.GOOGLE_IOS_CLIENT_ID ?? '',
+  },
+
   billing: {
     /**
      * If false (the default), the backend refuses to activate Premium in
