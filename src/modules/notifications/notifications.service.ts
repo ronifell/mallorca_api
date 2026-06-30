@@ -104,6 +104,22 @@ export const notificationsService = {
     );
   },
 
+  async notifySuperLike(receiverId: string, senderId: string) {
+    if (!(await isPrefEnabled(receiverId, 'matches_enabled'))) return;
+    const r = await query<{ first_name: string | null }>(
+      'SELECT first_name FROM users WHERE id = $1',
+      [senderId],
+    );
+    const name = r.rows[0]?.first_name?.trim() ?? '';
+    await push(receiverId, {
+      title: '⭐ Super Like!',
+      body: name
+        ? `${name} te ha enviado un Super Like. / ${name} sent you a Super Like.`
+        : 'Alguien te ha enviado un Super Like. / Someone sent you a Super Like.',
+      data: { type: 'super_like', fromUserId: senderId },
+    });
+  },
+
   async notifyNewMessage(receiverId: string, fromName: string) {
     if (!(await isPrefEnabled(receiverId, 'messages_enabled'))) return;
     await push(receiverId, {
