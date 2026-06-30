@@ -1,5 +1,6 @@
 import { query, withTransaction } from '../../config/database';
-import { BadRequest } from '../../utils/errors';
+import { categoryMessage, inspectContent } from '../../utils/contentFilter';
+import { BadRequest, ContentBlocked } from '../../utils/errors';
 
 export const moderationService = {
   async block(userId: string, targetId: string): Promise<void> {
@@ -62,6 +63,12 @@ export const moderationService = {
     payload: { reason: string; details?: string },
   ): Promise<void> {
     if (userId === targetId) throw BadRequest('Cannot report yourself');
+    if (payload.details?.trim()) {
+      const verdict = inspectContent(payload.details, 'chat');
+      if (verdict.blocked && verdict.category) {
+        throw ContentBlocked(categoryMessage(verdict.category), verdict.category, 'details');
+      }
+    }
     await query(
       `INSERT INTO reports (reporter_id, reported_user_id, reason, details)
          VALUES ($1, $2, $3, $4)`,

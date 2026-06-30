@@ -13,6 +13,7 @@
     "seed:discovery": "ts-node src/db/seed-discovery.ts",
     "verify:push": "ts-node scripts/verify-push.ts",
     "test:push": "ts-node scripts/send-test-push.ts",
+    "verify:content-filter": "ts-node scripts/verify-content-filter.ts",
     "lint": "eslint \"src/**/*.ts\"",
     "test": "jest --passWithNoTests"
   },
