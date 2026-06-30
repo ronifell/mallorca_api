@@ -14,6 +14,7 @@ import {
 import { hashPassword, isStrongPassword, verifyPassword } from '../../utils/password';
 import {
   ForgotPasswordInput,
+  GoogleLoginInput,
   LoginInput,
   RefreshInput,
   RegisterInput,
@@ -75,6 +76,66 @@ interface AuthResult extends AuthTokens {
 
 function isAdminEmail(email: string): boolean {
   return env.admin.emails.includes(email.toLowerCase());
+}
+
+function hasGoogleConsent(input: GoogleLoginInput): boolean {
+  return input.acceptedTerms === true && input.acceptedPrivacy === true;
+}
+
+async function verifyGoogleIdToken(
+  idToken: string,
+): Promise<{ sub: string; email: string; emailVerified: boolean }> {
+  const audiences = [env.googleAuth.clientId, env.googleAuth.iosClientId].filter(Boolean);
+  if (audiences.length === 0) {
+    throw BadRequest('Google sign-in is not configured on the server');
+  }
+
+  const { OAuth2Client } = await import('google-auth-library');
+  const client = new OAuth2Client();
+  let payload;
+  try {
+    const ticket = await client.verifyIdToken({ idToken, audience: audiences });
+    payload = ticket.getPayload();
+  } catch {
+    throw Unauthorized('Invalid Google sign-in token');
+  }
+
+  if (!payload?.sub || !payload.email) {
+    throw Unauthorized('Invalid Google sign-in token');
+  }
+
+  return {
+    sub: payload.sub,
+    email: payload.email.toLowerCase(),
+    emailVerified: payload.email_verified === true,
+  };
+}
+
+async function buildAuthResult(user: {
+  id: string;
+  email: string;
+  role: 'user' | 'admin';
+  is_premium: boolean;
+  email_verified_at: Date | null;
+}): Promise<AuthResult> {
+  const tokens = await issueTokens({
+    id: user.id,
+    email: user.email,
+    role: user.role,
+    isPremium: user.is_premium,
+  });
+
+  return {
+    ...tokens,
+    user: {
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      isPremium: user.is_premium,
+      profileComplete: await profileComplete(user.id),
+      emailVerified: user.email_verified_at != null,
+    },
+  };
 }
 
 async function issueTokens(user: {
@@ -196,7 +257,7 @@ export const authService = {
     const r = await query<{
       id: string;
       email: string;
-      password_hash: string;
+      password_hash: string | null;
       is_premium: boolean;
       role: 'user' | 'admin';
       status: string;
@@ -209,30 +270,138 @@ export const authService = {
     const user = r.rows[0];
     if (!user) throw Unauthorized('Invalid credentials');
     if (user.status !== 'active') throw Unauthorized('Account is not active');
+    if (!user.password_hash) {
+      throw Unauthorized('This account uses Google sign-in. Please continue with Google.');
+    }
 
     const ok = await verifyPassword(input.password, user.password_hash);
     if (!ok) throw Unauthorized('Invalid credentials');
 
     await query('UPDATE users SET last_active_at = NOW() WHERE id = $1', [user.id]);
 
-    const tokens = await issueTokens({
-      id: user.id,
-      email: user.email,
-      role: user.role,
-      isPremium: user.is_premium,
-    });
+    return buildAuthResult(user);
+  },
 
-    return {
-      ...tokens,
-      user: {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-        isPremium: user.is_premium,
-        profileComplete: await profileComplete(user.id),
-        emailVerified: user.email_verified_at != null,
-      },
-    };
+  async loginWithGoogle(input: GoogleLoginInput): Promise<AuthResult> {
+    const google = await verifyGoogleIdToken(input.idToken);
+
+    const byGoogle = await query<{
+      id: string;
+      email: string;
+      is_premium: boolean;
+      role: 'user' | 'admin';
+      status: string;
+      email_verified_at: Date | null;
+    }>(
+      `SELECT id, email, is_premium, role, status, email_verified_at
+       FROM users WHERE google_sub = $1`,
+      [google.sub],
+    );
+    let user = byGoogle.rows[0];
+
+    if (!user) {
+      const byEmail = await query<{
+        id: string;
+        email: string;
+        password_hash: string | null;
+        google_sub: string | null;
+        is_premium: boolean;
+        role: 'user' | 'admin';
+        status: string;
+        email_verified_at: Date | null;
+      }>(
+        `SELECT id, email, password_hash, google_sub, is_premium, role, status, email_verified_at
+         FROM users WHERE email = $1`,
+        [google.email],
+      );
+      const existing = byEmail.rows[0];
+
+      if (existing) {
+        if (existing.google_sub && existing.google_sub !== google.sub) {
+          throw Conflict('This email is linked to a different Google account.');
+        }
+
+        if (existing.password_hash && !existing.google_sub && !google.emailVerified) {
+          throw Unauthorized(
+            'Your Google email must be verified before linking to your existing account.',
+          );
+        }
+
+        await query(
+          `UPDATE users
+           SET google_sub = $1,
+               email_verified_at = CASE
+                 WHEN $2 OR password_hash IS NOT NULL THEN COALESCE(email_verified_at, NOW())
+                 ELSE email_verified_at
+               END,
+               last_active_at = NOW(),
+               updated_at = NOW()
+           WHERE id = $3`,
+          [google.sub, google.emailVerified, existing.id],
+        );
+        user = existing;
+      } else {
+        if (!hasGoogleConsent(input)) {
+          throw BadRequest('You must accept the Terms and the Privacy Policy');
+        }
+
+        const role = isAdminEmail(google.email) ? 'admin' : 'user';
+        const inserted = await withTransaction(async (client) => {
+          const r = await client.query<{
+            id: string;
+            email: string;
+            is_premium: boolean;
+            role: 'user' | 'admin';
+            email_verified_at: Date | null;
+          }>(
+            `INSERT INTO users (
+                email, google_sub, role, language,
+                terms_accepted_at, privacy_accepted_at,
+                email_verified_at, last_active_at
+             )
+             VALUES ($1, $2, $3, $4, NOW(), NOW(), $5, NOW())
+             RETURNING id, email, is_premium, role, email_verified_at`,
+            [
+              google.email,
+              google.sub,
+              role,
+              input.language ?? 'en',
+              google.emailVerified ? new Date() : null,
+            ],
+          );
+          const u = r.rows[0];
+          await client.query(
+            `INSERT INTO notification_settings (user_id) VALUES ($1)
+             ON CONFLICT (user_id) DO NOTHING`,
+            [u.id],
+          );
+          return u;
+        });
+
+        return {
+          ...(await issueTokens({
+            id: inserted.id,
+            email: inserted.email,
+            role: inserted.role,
+            isPremium: inserted.is_premium,
+          })),
+          user: {
+            id: inserted.id,
+            email: inserted.email,
+            role: inserted.role,
+            isPremium: inserted.is_premium,
+            profileComplete: false,
+            emailVerified: inserted.email_verified_at != null,
+          },
+        };
+      }
+    }
+
+    if (user.status !== 'active') throw Unauthorized('Account is not active');
+
+    await query('UPDATE users SET last_active_at = NOW() WHERE id = $1', [user.id]);
+
+    return buildAuthResult(user);
   },
 
   async verifyEmail(input: VerifyEmailInput): Promise<{ verified: boolean }> {
@@ -338,12 +507,13 @@ export const authService = {
   },
 
   async forgotPassword(input: ForgotPasswordInput): Promise<void> {
-    const r = await query<{ id: string }>('SELECT id FROM users WHERE email = $1', [
-      input.email.toLowerCase(),
-    ]);
+    const r = await query<{ id: string; password_hash: string | null }>(
+      'SELECT id, password_hash FROM users WHERE email = $1',
+      [input.email.toLowerCase()],
+    );
     const user = r.rows[0];
     // Always return success to avoid email enumeration. Only send email if exists.
-    if (!user) return;
+    if (!user || !user.password_hash) return;
 
     const raw = crypto.randomBytes(32).toString('hex');
     const tokenHash = crypto.createHash('sha256').update(raw).digest('hex');

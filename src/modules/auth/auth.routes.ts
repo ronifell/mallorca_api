@@ -7,6 +7,7 @@ const router = Router();
 
 router.post('/register', authLimiter, asyncHandler(authController.register));
 router.post('/login', authLimiter, asyncHandler(authController.login));
+router.post('/google', authLimiter, asyncHandler(authController.googleLogin));
 router.post('/refresh', asyncHandler(authController.refresh));
 router.post('/logout', asyncHandler(authController.logout));
 router.post('/forgot-password', authLimiter, asyncHandler(authController.forgotPassword));

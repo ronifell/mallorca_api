@@ -3,6 +3,7 @@ import { env } from '../../config/env';
 import { authService } from './auth.service';
 import {
   forgotPasswordSchema,
+  googleLoginSchema,
   loginSchema,
   refreshSchema,
   registerSchema,
@@ -87,6 +88,12 @@ export const authController = {
   async login(req: Request, res: Response) {
     const data = loginSchema.parse(req.body);
     const result = await authService.login(data);
+    res.json(result);
+  },
+
+  async googleLogin(req: Request, res: Response) {
+    const data = googleLoginSchema.parse(req.body);
+    const result = await authService.loginWithGoogle(data);
     res.json(result);
   },
 
