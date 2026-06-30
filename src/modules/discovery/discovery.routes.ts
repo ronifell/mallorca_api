@@ -9,6 +9,8 @@ router.use(requireAuth);
 router.get('/feed', asyncHandler(discoveryController.feed));
 router.post('/reset', asyncHandler(discoveryController.resetFeed));
 router.post('/like/:id', asyncHandler(discoveryController.like));
+router.post('/super-like/:id', asyncHandler(discoveryController.superLike));
+router.get('/super-like/quota', asyncHandler(discoveryController.superLikeQuota));
 router.post('/pass/:id', asyncHandler(discoveryController.pass));
 router.get('/likes/sent', asyncHandler(discoveryController.sentLikes));
 router.get('/likes/received', asyncHandler(discoveryController.receivedLikes));
