@@ -81,9 +81,22 @@ const SOCIAL_PLATFORM_RE = wordList([
   'onlyfans',
   'only fans',
   'twitter',
+  'x.com',
+  'linkedin',
+  'linkdin',
+  'youtube',
+  'youtu',
+  'signal',
+  'wechat',
+  'line app',
   'kik',
   'viber',
   'discord',
+  'threads',
+  'pinterest',
+  'reddit',
+  'tumblr',
+  'skype',
 ]);
 
 // --- Phone numbers ----------------------------------------------------------
