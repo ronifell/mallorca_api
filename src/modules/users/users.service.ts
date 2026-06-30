@@ -1,7 +1,8 @@
 import { query, withTransaction } from '../../config/database';
 import { resolveStoredUrl, uploadImage } from '../../services/storage';
 import { calculateAge, isAdult, MIN_AGE } from '../../utils/age';
-import { BadRequest, Conflict, NotFound } from '../../utils/errors';
+import { categoryMessage, inspectContent } from '../../utils/contentFilter';
+import { BadRequest, Conflict, ContentBlocked, NotFound } from '../../utils/errors';
 import type { Gender } from '../discovery/compatibility';
 import { UpdateProfileInput } from './users.schemas';
 
@@ -181,6 +182,21 @@ export const usersService = {
   async updateProfile(userId: string, input: UpdateProfileInput): Promise<MyProfile> {
     if (input.birthDate && !isAdult(input.birthDate)) {
       throw BadRequest(`You must be at least ${MIN_AGE} years old`);
+    }
+
+    // Free-text profile fields are public, so they get the stricter "profile"
+    // policy. The field name is returned so the client can highlight it.
+    const textFields: [field: string, value: string | undefined][] = [
+      ['firstName', input.firstName],
+      ['city', input.city],
+      ['bio', input.bio],
+    ];
+    for (const [field, value] of textFields) {
+      if (!value) continue;
+      const verdict = inspectContent(value, 'profile');
+      if (verdict.blocked && verdict.category) {
+        throw ContentBlocked(categoryMessage(verdict.category), verdict.category, field);
+      }
     }
 
     await withTransaction(async (client) => {
