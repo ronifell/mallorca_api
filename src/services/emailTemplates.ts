@@ -6,6 +6,9 @@
  * first name (optional) and the action URL.
  */
 
+/** Official outbound / support address shown in all transactional emails. */
+const OFFICIAL_EMAIL = 'info@citasmallorca.es';
+
 const BRAND = {
   background: '#F2EBE0',
   surface: '#FFFFFF',
@@ -65,7 +68,7 @@ function shell(innerHtml: string): string {
           <tr>
             <td align="center" style="padding:8px 24px 24px 24px;color:${BRAND.inkSoft};font-size:12px;line-height:18px;">
               <p style="margin:0;">Citas Mallorca · <a href="https://www.citasmallorca.es" style="color:${BRAND.coral};text-decoration:none;">www.citasmallorca.es</a></p>
-              <p style="margin:6px 0 0 0;">¿Necesitas ayuda? Escríbenos a <a href="mailto:soporte@citasmallorca.es" style="color:${BRAND.coral};text-decoration:none;">soporte@citasmallorca.es</a></p>
+              <p style="margin:6px 0 0 0;">¿Necesitas ayuda? Escríbenos a <a href="mailto:${OFFICIAL_EMAIL}" style="color:${BRAND.coral};text-decoration:none;">${OFFICIAL_EMAIL}</a></p>
             </td>
           </tr>
         </table>

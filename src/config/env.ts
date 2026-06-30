@@ -34,7 +34,7 @@ export const env = {
     port: Number(process.env.SMTP_PORT ?? 587),
     user: process.env.SMTP_USER ?? '',
     pass: process.env.SMTP_PASS ?? '',
-    from: process.env.MAIL_FROM ?? 'no-reply@citasmallorca.es',
+    from: process.env.MAIL_FROM ?? 'Citas Mallorca <info@citasmallorca.es>',
   },
 
   storage: {
@@ -87,7 +87,7 @@ export const env = {
 
   contact: {
     info: process.env.CONTACT_INFO_EMAIL ?? 'info@citasmallorca.es',
-    support: process.env.CONTACT_SUPPORT_EMAIL ?? 'soporte@citasmallorca.es',
+    support: process.env.CONTACT_SUPPORT_EMAIL ?? 'info@citasmallorca.es',
   },
 
   rateLimit: {
