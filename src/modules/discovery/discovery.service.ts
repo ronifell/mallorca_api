@@ -92,9 +92,8 @@ export interface SuperLikeQuota {
 async function countWeeklySuperLikes(userId: string): Promise<number> {
   const r = await query<{ count: string }>(
     `SELECT COUNT(*)::text AS count
-     FROM likes
-     WHERE sender_id = $1
-       AND is_super = TRUE
+     FROM super_like_usages
+     WHERE user_id = $1
        AND created_at >= NOW() - INTERVAL '7 days'`,
     [userId],
   );
@@ -104,15 +103,22 @@ async function countWeeklySuperLikes(userId: string): Promise<number> {
 async function oldestSuperLikeInWindow(userId: string): Promise<Date | null> {
   const r = await query<{ created_at: Date }>(
     `SELECT created_at
-     FROM likes
-     WHERE sender_id = $1
-       AND is_super = TRUE
+     FROM super_like_usages
+     WHERE user_id = $1
        AND created_at >= NOW() - INTERVAL '7 days'
      ORDER BY created_at ASC
      LIMIT 1`,
     [userId],
   );
   return r.rows[0]?.created_at ?? null;
+}
+
+async function hasSuperLikeUsage(userId: string, targetId: string): Promise<boolean> {
+  const r = await query(
+    `SELECT 1 FROM super_like_usages WHERE user_id = $1 AND target_user_id = $2 LIMIT 1`,
+    [userId, targetId],
+  );
+  return (r.rowCount ?? 0) > 0;
 }
 
 export const discoveryService = {
@@ -370,7 +376,8 @@ export const discoveryService = {
       'SELECT is_super FROM likes WHERE sender_id = $1 AND receiver_id = $2',
       [userId, targetId],
     );
-    const alreadySuper = existing.rows[0]?.is_super ?? false;
+    const alreadySuper =
+      (existing.rows[0]?.is_super ?? false) || (await hasSuperLikeUsage(userId, targetId));
 
     if (!alreadySuper) {
       const used = await countWeeklySuperLikes(userId);
@@ -379,7 +386,7 @@ export const discoveryService = {
       }
     }
 
-    const result = await recordLike(userId, targetId, true);
+    const result = await recordLike(userId, targetId, true, !alreadySuper);
     const quota = await this.getSuperLikeQuota(userId);
     return {
       ...result,
@@ -393,6 +400,7 @@ async function recordLike(
   userId: string,
   targetId: string,
   isSuper: boolean,
+  consumeSuperLikeQuota = false,
 ): Promise<{ matched: boolean; matchId?: string }> {
     if (userId === targetId) throw BadRequest('Cannot like yourself');
 
@@ -414,6 +422,13 @@ async function recordLike(
            DO UPDATE SET is_super = likes.is_super OR EXCLUDED.is_super`,
         [userId, targetId, isSuper],
       );
+      if (consumeSuperLikeQuota) {
+        await client.query(
+          `INSERT INTO super_like_usages (user_id, target_user_id) VALUES ($1, $2)
+             ON CONFLICT (user_id, target_user_id) DO NOTHING`,
+          [userId, targetId],
+        );
+      }
       // Liking implicitly retracts a prior pass on this candidate.
       await client.query(
         `DELETE FROM passes WHERE sender_id = $1 AND receiver_id = $2`,
