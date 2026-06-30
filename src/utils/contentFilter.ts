@@ -46,7 +46,8 @@ function wordList(terms: string[]): RegExp {
     .map((t) => t.trim())
     .filter(Boolean)
     .map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+'));
-  return new RegExp(`(?:^|[^\\p{L}])(${escaped.join('|')})(?![\\p{L}])`, 'iu');
+  // \b word boundaries on fold()ed ASCII-normalised input (Hermes-safe on the client mirror).
+  return new RegExp(`\\b(${escaped.join('|')})\\b`, 'i');
 }
 
 // --- Links / URLs -----------------------------------------------------------
@@ -91,7 +92,7 @@ const PHONE_CANDIDATE_RE = /\+?\d(?:[\d\s().-]{5,}\d)/g;
 
 // --- Spam -------------------------------------------------------------------
 const REPEATED_CHAR_RE = /(.)\1{7,}/;
-const REPEATED_WORD_RE = /\b(\p{L}{2,})\b(?:\s+\1\b){3,}/iu;
+const REPEATED_WORD_RE = /\b([a-z]{2,})\b(?:\s+\1\b){3,}/i;
 const SPAM_PHRASE_RE = wordList([
   'free money',
   'make money fast',
