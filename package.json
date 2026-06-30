@@ -11,6 +11,8 @@
     "migrate": "ts-node src/db/migrate.ts",
     "migrate:prod": "node dist/db/migrate.js",
     "seed:discovery": "ts-node src/db/seed-discovery.ts",
+    "verify:push": "ts-node scripts/verify-push.ts",
+    "test:push": "ts-node scripts/send-test-push.ts",
     "lint": "eslint \"src/**/*.ts\"",
     "test": "jest --passWithNoTests"
   },

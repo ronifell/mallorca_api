@@ -75,7 +75,7 @@ async function push(
   if (!tokens.length) return;
 
   try {
-    await admin.messaging().sendEachForMulticast({
+    const result = await admin.messaging().sendEachForMulticast({
       tokens,
       notification: { title: payload.title, body: payload.body },
       data: payload.data,
@@ -83,6 +83,15 @@ async function push(
       apns: {
         payload: { aps: { sound: 'default', contentAvailable: true } },
       },
+    });
+    result.responses.forEach((response, index) => {
+      if (response.success) return;
+      logger.error('FCM send failed for token', {
+        userId,
+        tokenIndex: index,
+        code: response.error?.code,
+        err: response.error?.message,
+      });
     });
   } catch (e) {
     logger.error('FCM send failed', { err: e instanceof Error ? e.message : String(e) });
