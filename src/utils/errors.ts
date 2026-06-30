@@ -15,6 +15,13 @@ export class AppError extends Error {
 export const BadRequest = (msg = 'Bad request', details?: unknown) =>
   new AppError(400, 'BAD_REQUEST', msg, details);
 
+/**
+ * Raised when user-authored text is rejected by the content filter. The
+ * `category` is carried in `details` so clients can localise the message.
+ */
+export const ContentBlocked = (msg: string, category: string, field?: string) =>
+  new AppError(400, 'CONTENT_BLOCKED', msg, { category, field });
+
 export const Unauthorized = (msg = 'Unauthorized') =>
   new AppError(401, 'UNAUTHORIZED', msg);
 

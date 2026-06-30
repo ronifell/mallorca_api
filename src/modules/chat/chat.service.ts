@@ -1,6 +1,7 @@
 import { query, withTransaction } from '../../config/database';
 import { resolveStoredUrl, uploadAudio, uploadImage } from '../../services/storage';
-import { BadRequest, Forbidden, NotFound } from '../../utils/errors';
+import { categoryMessage, inspectContent } from '../../utils/contentFilter';
+import { BadRequest, ContentBlocked, Forbidden, NotFound } from '../../utils/errors';
 import { isUserPremium } from '../../utils/premium';
 
 export interface ConversationContext {
@@ -89,6 +90,14 @@ export const chatService = {
     const ctx = await loadConversation(conversationId);
     if (!ctx) throw NotFound('Conversation not found');
     assertParticipant(ctx, senderId);
+
+    // Block inappropriate text before it is persisted or broadcast.
+    if (input.type === 'text' && input.text) {
+      const verdict = inspectContent(input.text, 'chat');
+      if (verdict.blocked && verdict.category) {
+        throw ContentBlocked(categoryMessage(verdict.category), verdict.category, 'text');
+      }
+    }
 
     // Premium gate: only premium users can initiate (send the first message).
     if (ctx.messageCount === 0) {
