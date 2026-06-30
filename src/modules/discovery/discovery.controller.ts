@@ -30,11 +30,14 @@ export const discoveryController = {
   },
 
   async superLike(req: Request, res: Response) {
-    const { id } = likeParamsSchema.parse(req.params);
-    const result = await discoveryService.superLike(userId(req), id);
+    const senderId = userId(req);
+    const { id: targetId } = likeParamsSchema.parse(req.params);
+    const result = await discoveryService.superLike(senderId, targetId);
     if (result.matched && result.matchId) {
-      void notificationsService.notifyNewMatch(userId(req), id);
-      void emitMatchEvents(userId(req), id, result.matchId);
+      void notificationsService.notifyNewMatch(senderId, targetId);
+      void emitMatchEvents(senderId, targetId, result.matchId);
+    } else if (result.isNewSuperLike) {
+      void notificationsService.notifySuperLike(targetId, senderId);
     }
     res.json(result);
   },

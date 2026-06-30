@@ -37,6 +37,7 @@ export interface FeedCandidate {
 
 export interface LikeUser extends FeedCandidate {
   likedAt: string;
+  isSuperLike: boolean;
 }
 
 interface ViewerProfile {
@@ -354,7 +355,12 @@ export const discoveryService = {
   async superLike(
     userId: string,
     targetId: string,
-  ): Promise<{ matched: boolean; matchId?: string; superLikesRemaining: number }> {
+  ): Promise<{
+    matched: boolean;
+    matchId?: string;
+    superLikesRemaining: number;
+    isNewSuperLike: boolean;
+  }> {
     const premium = await isUserPremium(userId);
     if (!premium) {
       throw Forbidden('Super Like is a Premium feature');
@@ -375,7 +381,11 @@ export const discoveryService = {
 
     const result = await recordLike(userId, targetId, true);
     const quota = await this.getSuperLikeQuota(userId);
-    return { ...result, superLikesRemaining: quota.remaining };
+    return {
+      ...result,
+      superLikesRemaining: quota.remaining,
+      isNewSuperLike: !alreadySuper,
+    };
   },
 };
 
@@ -497,10 +507,15 @@ async function loadLikedUsers(
   const joinOn = direction === 'sent' ? 'l.receiver_id' : 'l.sender_id';
   const where = direction === 'sent' ? 'l.sender_id' : 'l.receiver_id';
 
+  const orderBy =
+    direction === 'received'
+      ? 'ORDER BY l.is_super DESC, l.created_at DESC'
+      : 'ORDER BY l.created_at DESC';
+
   const sql = `
     SELECT
       u.id, u.first_name, u.birth_date, u.city, u.bio, u.gender, u.is_premium,
-      p.interested_in, p.min_age, p.max_age, l.created_at AS liked_at
+      p.interested_in, p.min_age, p.max_age, l.created_at AS liked_at, l.is_super
     FROM likes l
     JOIN users u ON u.id = ${joinOn}
     LEFT JOIN user_preferences p ON p.user_id = u.id
@@ -516,7 +531,7 @@ async function loadLikedUsers(
          WHERE m.user_a_id = LEAST($1::uuid, u.id)
            AND m.user_b_id = GREATEST($1::uuid, u.id)
       )
-    ORDER BY l.created_at DESC
+    ${orderBy}
     LIMIT $2
   `;
 
@@ -532,6 +547,7 @@ async function loadLikedUsers(
     min_age: number | null;
     max_age: number | null;
     liked_at: Date;
+    is_super: boolean;
   }>(sql, [userId, limit]);
 
   if (!r.rows.length) return [];
@@ -596,5 +612,6 @@ async function loadLikedUsers(
     minAge: u.min_age ?? 18,
     maxAge: u.max_age ?? 99,
     likedAt: u.liked_at.toISOString(),
+    isSuperLike: u.is_super,
   }));
 }
