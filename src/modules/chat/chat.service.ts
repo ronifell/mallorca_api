@@ -1,6 +1,7 @@
 import { query, withTransaction } from '../../config/database';
 import { resolveStoredUrl, uploadAudio, uploadImage } from '../../services/storage';
 import { BadRequest, Forbidden, NotFound } from '../../utils/errors';
+import { isUserPremium } from '../../utils/premium';
 
 export interface ConversationContext {
   conversationId: string;
@@ -41,14 +42,6 @@ function assertParticipant(ctx: ConversationContext, userId: string) {
   if (!ctx.participants.includes(userId)) {
     throw Forbidden('You are not a participant in this conversation');
   }
-}
-
-async function isUserPremium(userId: string): Promise<boolean> {
-  const r = await query<{ is_premium: boolean }>(
-    'SELECT is_premium FROM users WHERE id = $1',
-    [userId],
-  );
-  return r.rows[0]?.is_premium ?? false;
 }
 
 export const chatService = {

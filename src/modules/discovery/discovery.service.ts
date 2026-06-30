@@ -1,7 +1,8 @@
 import { query, withTransaction } from '../../config/database';
 import { resolveStoredUrl } from '../../services/storage';
 import { calculateAge } from '../../utils/age';
-import { BadRequest, NotFound } from '../../utils/errors';
+import { BadRequest, NotFound, Forbidden, TooMany } from '../../utils/errors';
+import { isUserPremium } from '../../utils/premium';
 import {
   Gender,
   InterestedIn,
@@ -75,6 +76,42 @@ async function loadViewer(userId: string): Promise<ViewerProfile> {
     minAge: row.min_age ?? 18,
     maxAge: row.max_age ?? 99,
   };
+}
+
+export const SUPER_LIKE_WEEKLY_LIMIT = 5;
+
+export interface SuperLikeQuota {
+  isPremium: boolean;
+  limit: number;
+  used: number;
+  remaining: number;
+  resetsAt: string | null;
+}
+
+async function countWeeklySuperLikes(userId: string): Promise<number> {
+  const r = await query<{ count: string }>(
+    `SELECT COUNT(*)::text AS count
+     FROM likes
+     WHERE sender_id = $1
+       AND is_super = TRUE
+       AND created_at >= NOW() - INTERVAL '7 days'`,
+    [userId],
+  );
+  return Number(r.rows[0]?.count ?? 0);
+}
+
+async function oldestSuperLikeInWindow(userId: string): Promise<Date | null> {
+  const r = await query<{ created_at: Date }>(
+    `SELECT created_at
+     FROM likes
+     WHERE sender_id = $1
+       AND is_super = TRUE
+       AND created_at >= NOW() - INTERVAL '7 days'
+     ORDER BY created_at ASC
+     LIMIT 1`,
+    [userId],
+  );
+  return r.rows[0]?.created_at ?? null;
 }
 
 export const discoveryService = {
@@ -273,7 +310,80 @@ export const discoveryService = {
    * Like another user. If the like is reciprocal AND mutually compatible, a
    * Match row is created (idempotently) and the result reports `matched: true`.
    */
-  async like(userId: string, targetId: string): Promise<{ matched: boolean; matchId?: string }> {
+  async like(
+    userId: string,
+    targetId: string,
+    options?: { isSuper?: boolean },
+  ): Promise<{ matched: boolean; matchId?: string }> {
+    return recordLike(userId, targetId, options?.isSuper ?? false);
+  },
+
+  async getSuperLikeQuota(userId: string): Promise<SuperLikeQuota> {
+    const premium = await isUserPremium(userId);
+    if (!premium) {
+      return {
+        isPremium: false,
+        limit: SUPER_LIKE_WEEKLY_LIMIT,
+        used: 0,
+        remaining: 0,
+        resetsAt: null,
+      };
+    }
+
+    const used = await countWeeklySuperLikes(userId);
+    const remaining = Math.max(0, SUPER_LIKE_WEEKLY_LIMIT - used);
+    const oldest = await oldestSuperLikeInWindow(userId);
+    const resetsAt =
+      used >= SUPER_LIKE_WEEKLY_LIMIT && oldest
+        ? new Date(oldest.getTime() + 7 * 24 * 60 * 60 * 1000).toISOString()
+        : null;
+
+    return {
+      isPremium: true,
+      limit: SUPER_LIKE_WEEKLY_LIMIT,
+      used,
+      remaining,
+      resetsAt,
+    };
+  },
+
+  /**
+   * Premium-only Super Like with a weekly quota. Upgrades an existing regular
+   * like to super; re-super-liking the same user does not consume quota.
+   */
+  async superLike(
+    userId: string,
+    targetId: string,
+  ): Promise<{ matched: boolean; matchId?: string; superLikesRemaining: number }> {
+    const premium = await isUserPremium(userId);
+    if (!premium) {
+      throw Forbidden('Super Like is a Premium feature');
+    }
+
+    const existing = await query<{ is_super: boolean }>(
+      'SELECT is_super FROM likes WHERE sender_id = $1 AND receiver_id = $2',
+      [userId, targetId],
+    );
+    const alreadySuper = existing.rows[0]?.is_super ?? false;
+
+    if (!alreadySuper) {
+      const used = await countWeeklySuperLikes(userId);
+      if (used >= SUPER_LIKE_WEEKLY_LIMIT) {
+        throw TooMany('You have used all your Super Likes this week');
+      }
+    }
+
+    const result = await recordLike(userId, targetId, true);
+    const quota = await this.getSuperLikeQuota(userId);
+    return { ...result, superLikesRemaining: quota.remaining };
+  },
+};
+
+async function recordLike(
+  userId: string,
+  targetId: string,
+  isSuper: boolean,
+): Promise<{ matched: boolean; matchId?: string }> {
     if (userId === targetId) throw BadRequest('Cannot like yourself');
 
     // Block target if target blocked viewer.
@@ -287,11 +397,12 @@ export const discoveryService = {
     if (blocked.rowCount) throw BadRequest('Cannot interact with this user');
 
     return withTransaction(async (client) => {
-      // Record the like (idempotent on duplicate).
+      // Record the like (idempotent on duplicate). Super likes upgrade the row.
       await client.query(
-        `INSERT INTO likes (sender_id, receiver_id) VALUES ($1, $2)
-           ON CONFLICT (sender_id, receiver_id) DO NOTHING`,
-        [userId, targetId],
+        `INSERT INTO likes (sender_id, receiver_id, is_super) VALUES ($1, $2, $3)
+           ON CONFLICT (sender_id, receiver_id)
+           DO UPDATE SET is_super = likes.is_super OR EXCLUDED.is_super`,
+        [userId, targetId, isSuper],
       );
       // Liking implicitly retracts a prior pass on this candidate.
       await client.query(
@@ -369,8 +480,7 @@ export const discoveryService = {
 
       return { matched: true, matchId: matchR.rows[0].id };
     });
-  },
-};
+}
 
 /**
  * Shared loader for the "likes" lists. Returns up to `limit` users that the

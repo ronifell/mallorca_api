@@ -29,6 +29,21 @@ export const discoveryController = {
     res.json(result);
   },
 
+  async superLike(req: Request, res: Response) {
+    const { id } = likeParamsSchema.parse(req.params);
+    const result = await discoveryService.superLike(userId(req), id);
+    if (result.matched && result.matchId) {
+      void notificationsService.notifyNewMatch(userId(req), id);
+      void emitMatchEvents(userId(req), id, result.matchId);
+    }
+    res.json(result);
+  },
+
+  async superLikeQuota(req: Request, res: Response) {
+    const quota = await discoveryService.getSuperLikeQuota(userId(req));
+    res.json(quota);
+  },
+
   async pass(req: Request, res: Response) {
     const { id } = likeParamsSchema.parse(req.params);
     await discoveryService.pass(userId(req), id);
