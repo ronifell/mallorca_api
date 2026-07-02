@@ -88,12 +88,14 @@ export const adminModerationService = {
     const r = await query(
       `SELECT r.id, r.reason, r.details, r.created_at, r.resolved,
               r.reporter_id, r.reported_user_id,
-              ru.email AS reported_email, ru.first_name AS reported_first_name, ru.status
+              ru.email AS reported_email, ru.first_name AS reported_first_name, ru.status,
+              rp.email AS reporter_email, rp.first_name AS reporter_first_name
        FROM reports r
        JOIN users ru ON ru.id = r.reported_user_id
+       LEFT JOIN users rp ON rp.id = r.reporter_id
        ${where}
        ORDER BY r.created_at DESC
-       LIMIT 200`,
+       LIMIT 500`,
       params,
     );
     return r.rows;

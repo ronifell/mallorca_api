@@ -65,7 +65,11 @@ async function isPrefEnabled(
   return r.rows[0]?.enabled ?? true;
 }
 
-/** FCM data payloads must be string-only; Expo Android also reads title/body from data as fallback. */
+/**
+ * FCM data payloads must be string-only.
+ * Expo Android reads `title` + `message` (not `body`) when presenting data-only pushes
+ * while the app is backgrounded or killed — see RemoteNotificationContent.kt.
+ */
 function buildDataPayload(
   title: string,
   body: string,
@@ -74,6 +78,10 @@ function buildDataPayload(
   const out: Record<string, string> = {
     title,
     body,
+    message: body,
+    channelId: 'default',
+    color: '#B82E2E',
+    priority: 'high',
   };
   if (data) {
     for (const [key, value] of Object.entries(data)) {
@@ -109,21 +117,23 @@ async function push(
   const data = buildDataPayload(payload.title, payload.body, payload.data);
 
   try {
+    // Data-only on Android so ExpoFirebaseMessagingService always receives the message
+    // (foreground, background, and killed). Notification+data payloads are handled by the
+    // OS tray when backgrounded and skip onMessageReceived, which breaks Expo channels/icons.
     const result = await admin.messaging().sendEachForMulticast({
       tokens,
-      notification: { title: payload.title, body: payload.body },
       data,
       android: {
         priority: 'high',
-        notification: {
-          channelId: 'default',
-          priority: 'high',
-          defaultSound: true,
-          visibility: 'public',
-        },
       },
       apns: {
-        payload: { aps: { sound: 'default', contentAvailable: true } },
+        headers: { 'apns-priority': '10' },
+        payload: {
+          aps: {
+            alert: { title: payload.title, body: payload.body },
+            sound: 'default',
+          },
+        },
       },
     });
 
@@ -209,11 +219,18 @@ export const notificationsService = {
     });
   },
 
-  async notifyNewMessage(receiverId: string, fromName: string, conversationId?: string) {
+  async notifyNewMessage(
+    receiverId: string,
+    fromName: string,
+    conversationId?: string,
+    preview?: string,
+  ) {
     if (!(await isPrefEnabled(receiverId, 'messages_enabled'))) return;
+    const body =
+      preview?.trim() || 'Tienes un nuevo mensaje. / You received a new message.';
     await push(receiverId, {
       title: fromName || 'Nuevo mensaje',
-      body: 'Tienes un nuevo mensaje. / You received a new message.',
+      body,
       data: {
         type: 'new_message',
         ...(conversationId ? { conversationId } : {}),
