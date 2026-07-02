@@ -79,7 +79,10 @@ async function push(
       tokens,
       notification: { title: payload.title, body: payload.body },
       data: payload.data,
-      android: { priority: 'high' },
+      android: {
+        priority: 'high',
+        notification: { channelId: 'default' },
+      },
       apns: {
         payload: { aps: { sound: 'default', contentAvailable: true } },
       },
@@ -111,6 +114,22 @@ export const notificationsService = {
         });
       }),
     );
+  },
+
+  async notifyNewLike(receiverId: string, senderId: string) {
+    if (!(await isPrefEnabled(receiverId, 'matches_enabled'))) return;
+    const r = await query<{ first_name: string | null }>(
+      'SELECT first_name FROM users WHERE id = $1',
+      [senderId],
+    );
+    const name = r.rows[0]?.first_name?.trim() ?? '';
+    await push(receiverId, {
+      title: '💖 New Like!',
+      body: name
+        ? `${name} te ha dado like. / ${name} liked you.`
+        : 'Alguien te ha dado like. / Someone liked you.',
+      data: { type: 'new_like', fromUserId: senderId },
+    });
   },
 
   async notifySuperLike(receiverId: string, senderId: string) {
