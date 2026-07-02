@@ -16,6 +16,16 @@ function userId(req: Request): string {
   return req.user.sub;
 }
 
+function messagePreview(msg: {
+  type: 'text' | 'image' | 'audio';
+  text: string | null;
+}): string {
+  if (msg.type === 'text' && msg.text?.trim()) return msg.text.trim();
+  if (msg.type === 'image') return 'Sent a photo / Foto enviada';
+  if (msg.type === 'audio') return 'Voice message / Mensaje de voz';
+  return 'Tienes un nuevo mensaje. / You received a new message.';
+}
+
 export const chatController = {
   async createForMatch(req: Request, res: Response) {
     const result = await chatService.getOrCreateConversationForMatch(
@@ -45,6 +55,7 @@ export const chatController = {
       msg.receiverId,
       nameR.rows[0]?.first_name ?? 'Citas Mallorca',
       msg.conversationId,
+      messagePreview(msg),
     );
 
     res.status(201).json(msg);
