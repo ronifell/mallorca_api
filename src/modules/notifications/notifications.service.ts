@@ -82,6 +82,8 @@ function buildDataPayload(
     channelId: 'default',
     color: '#B82E2E',
     priority: 'high',
+    sound: 'default',
+    vibrate: 'true',
   };
   if (data) {
     for (const [key, value] of Object.entries(data)) {
@@ -117,14 +119,27 @@ async function push(
   const data = buildDataPayload(payload.title, payload.body, payload.data);
 
   try {
-    // Data-only on Android so ExpoFirebaseMessagingService always receives the message
-    // (foreground, background, and killed). Notification+data payloads are handled by the
-    // OS tray when backgrounded and skip onMessageReceived, which breaks Expo channels/icons.
+    // Hybrid payload: Android shows the `notification` block in the system tray
+    // when the app is backgrounded/killed (most reliable path). The `data` block
+    // is still delivered for Expo when onMessageReceived runs in the foreground.
     const result = await admin.messaging().sendEachForMulticast({
       tokens,
+      notification: {
+        title: payload.title,
+        body: payload.body,
+      },
       data,
       android: {
         priority: 'high',
+        ttl: 86_400,
+        notification: {
+          channelId: 'default',
+          icon: 'notification_icon',
+          color: '#B82E2E',
+          priority: 'high',
+          defaultSound: true,
+          visibility: 'public',
+        },
       },
       apns: {
         headers: { 'apns-priority': '10' },
