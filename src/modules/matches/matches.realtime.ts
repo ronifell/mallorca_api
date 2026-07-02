@@ -65,14 +65,26 @@ export async function emitMatchEvents(
 ): Promise<void> {
   try {
     const users = await loadMatchUsers(userAId, userBId);
-    if (!users) return;
-    const a = users[userAId];
-    const b = users[userBId];
-    if (!a || !b) return;
-
     const io = getIO();
-    io.to(`user:${userAId}`).emit('match:new', { matchId, otherUser: b });
-    io.to(`user:${userBId}`).emit('match:new', { matchId, otherUser: a });
+
+    const payloadFor = (otherId: string) => {
+      const profile = users?.[otherId];
+      return {
+        matchId,
+        otherUser: profile ?? { id: otherId, firstName: null, photo: null },
+      };
+    };
+
+    if (!users) {
+      logger.warn('emitMatchEvents: full profiles unavailable, emitting minimal payload', {
+        userAId,
+        userBId,
+        matchId,
+      });
+    }
+
+    io.to(`user:${userAId}`).emit('match:new', payloadFor(userBId));
+    io.to(`user:${userBId}`).emit('match:new', payloadFor(userAId));
   } catch (e) {
     logger.error('emitMatchEvents failed', {
       err: e instanceof Error ? e.message : String(e),
