@@ -82,3 +82,62 @@ export async function emitMatchEvents(
     });
   }
 }
+
+export interface LikeEventPayload {
+  fromUserId: string;
+  fromName: string | null;
+}
+
+export type SuperLikeEventPayload = LikeEventPayload;
+
+async function loadSenderFirstName(senderId: string): Promise<string | null> {
+  const r = await query<{ first_name: string | null }>(
+    'SELECT first_name FROM users WHERE id = $1',
+    [senderId],
+  );
+  return r.rows[0]?.first_name?.trim() || null;
+}
+
+/**
+ * Notify the receiver in real time so foreground clients can show a local banner
+ * (FCM alone is unreliable while the app is open on Android).
+ */
+export async function emitLikeEvent(
+  receiverId: string,
+  senderId: string,
+): Promise<void> {
+  try {
+    const fromName = await loadSenderFirstName(senderId);
+    const io = getIO();
+    io.to(`user:${receiverId}`).emit('like:new', {
+      fromUserId: senderId,
+      fromName,
+    } satisfies LikeEventPayload);
+  } catch (e) {
+    logger.error('emitLikeEvent failed', {
+      err: e instanceof Error ? e.message : String(e),
+      receiverId,
+      senderId,
+    });
+  }
+}
+
+export async function emitSuperLikeEvent(
+  receiverId: string,
+  senderId: string,
+): Promise<void> {
+  try {
+    const fromName = await loadSenderFirstName(senderId);
+    const io = getIO();
+    io.to(`user:${receiverId}`).emit('super_like:new', {
+      fromUserId: senderId,
+      fromName,
+    } satisfies SuperLikeEventPayload);
+  } catch (e) {
+    logger.error('emitSuperLikeEvent failed', {
+      err: e instanceof Error ? e.message : String(e),
+      receiverId,
+      senderId,
+    });
+  }
+}

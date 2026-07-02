@@ -321,7 +321,7 @@ export const discoveryService = {
     userId: string,
     targetId: string,
     options?: { isSuper?: boolean },
-  ): Promise<{ matched: boolean; matchId?: string }> {
+  ): Promise<{ matched: boolean; matchId?: string; isNewLike: boolean }> {
     return recordLike(userId, targetId, options?.isSuper ?? false);
   },
 
@@ -401,7 +401,7 @@ async function recordLike(
   targetId: string,
   isSuper: boolean,
   consumeSuperLikeQuota = false,
-): Promise<{ matched: boolean; matchId?: string }> {
+): Promise<{ matched: boolean; matchId?: string; isNewLike: boolean }> {
     if (userId === targetId) throw BadRequest('Cannot like yourself');
 
     // Block target if target blocked viewer.
@@ -415,6 +415,12 @@ async function recordLike(
     if (blocked.rowCount) throw BadRequest('Cannot interact with this user');
 
     return withTransaction(async (client) => {
+      const existingLike = await client.query(
+        'SELECT 1 FROM likes WHERE sender_id = $1 AND receiver_id = $2',
+        [userId, targetId],
+      );
+      const isNewLike = !existingLike.rowCount;
+
       // Record the like (idempotent on duplicate). Super likes upgrade the row.
       await client.query(
         `INSERT INTO likes (sender_id, receiver_id, is_super) VALUES ($1, $2, $3)
@@ -445,7 +451,7 @@ async function recordLike(
         [userId, targetId],
       );
       if (existingMatch.rowCount) {
-        return { matched: true, matchId: existingMatch.rows[0].id };
+        return { matched: true, matchId: existingMatch.rows[0].id, isNewLike };
       }
 
       // Check reciprocal like.
@@ -453,7 +459,7 @@ async function recordLike(
         'SELECT 1 FROM likes WHERE sender_id = $1 AND receiver_id = $2',
         [targetId, userId],
       );
-      if (!reciprocal.rowCount) return { matched: false };
+      if (!reciprocal.rowCount) return { matched: false, isNewLike };
 
       // Both must be mutually compatible. Re-check at match-time so changes in
       // preferences cannot create stale matches.
@@ -476,13 +482,13 @@ async function recordLike(
         [userId, targetId],
       );
       const c = compatR.rows[0];
-      if (!c) return { matched: false };
+      if (!c) return { matched: false, isNewLike };
 
       const compatible = isMutuallyCompatible(
         { gender: c.viewer_gender, interestedIn: c.viewer_int },
         { gender: c.target_gender, interestedIn: c.target_int },
       );
-      if (!compatible) return { matched: false };
+      if (!compatible) return { matched: false, isNewLike };
 
       // Canonical (a < b) ordering required by the UNIQUE+CHECK constraint.
       // Use a SQL-level LEAST/GREATEST to ensure ordering matches PG's UUID
@@ -503,7 +509,7 @@ async function recordLike(
         [matchR.rows[0].id],
       );
 
-      return { matched: true, matchId: matchR.rows[0].id };
+      return { matched: true, matchId: matchR.rows[0].id, isNewLike };
     });
 }
 
