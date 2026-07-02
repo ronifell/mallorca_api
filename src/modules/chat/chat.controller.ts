@@ -42,6 +42,7 @@ export const chatController = {
     void notificationsService.notifyNewMessage(
       msg.receiverId,
       nameR.rows[0]?.first_name ?? 'Citas Mallorca',
+      msg.conversationId,
     );
 
     res.status(201).json(msg);

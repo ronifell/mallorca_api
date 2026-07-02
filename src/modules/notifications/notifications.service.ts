@@ -65,39 +65,100 @@ async function isPrefEnabled(
   return r.rows[0]?.enabled ?? true;
 }
 
+/** FCM data payloads must be string-only; Expo Android also reads title/body from data as fallback. */
+function buildDataPayload(
+  title: string,
+  body: string,
+  data?: Record<string, string>,
+): Record<string, string> {
+  const out: Record<string, string> = {
+    title,
+    body,
+  };
+  if (data) {
+    for (const [key, value] of Object.entries(data)) {
+      if (value != null) out[key] = String(value);
+    }
+  }
+  return out;
+}
+
+async function clearInvalidToken(userId: string, token: string): Promise<void> {
+  await query('UPDATE users SET fcm_token = NULL WHERE id = $1 AND fcm_token = $2', [
+    userId,
+    token,
+  ]);
+}
+
 async function push(
   userId: string,
   payload: { title: string; body: string; data?: Record<string, string> },
 ) {
+  const type = payload.data?.type ?? 'unknown';
   const admin = await getFirebase();
-  if (!admin) return;
+  if (!admin) {
+    logger.warn('FCM push skipped — Firebase not configured', { userId, type });
+    return;
+  }
   const tokens = await tokensForUser(userId);
-  if (!tokens.length) return;
+  if (!tokens.length) {
+    logger.warn('FCM push skipped — no device token saved for user', { userId, type });
+    return;
+  }
+
+  const data = buildDataPayload(payload.title, payload.body, payload.data);
 
   try {
     const result = await admin.messaging().sendEachForMulticast({
       tokens,
       notification: { title: payload.title, body: payload.body },
-      data: payload.data,
+      data,
       android: {
         priority: 'high',
-        notification: { channelId: 'default' },
+        notification: {
+          channelId: 'default',
+          priority: 'high',
+          defaultSound: true,
+          visibility: 'public',
+        },
       },
       apns: {
         payload: { aps: { sound: 'default', contentAvailable: true } },
       },
     });
+
+    let successCount = 0;
     result.responses.forEach((response, index) => {
-      if (response.success) return;
+      if (response.success) {
+        successCount += 1;
+        return;
+      }
+      const err = response.error;
       logger.error('FCM send failed for token', {
         userId,
+        type,
         tokenIndex: index,
-        code: response.error?.code,
-        err: response.error?.message,
+        code: err?.code,
+        err: err?.message,
       });
+      if (
+        err?.code === 'messaging/registration-token-not-registered' ||
+        err?.code === 'messaging/invalid-registration-token' ||
+        err?.code === 'messaging/invalid-argument'
+      ) {
+        void clearInvalidToken(userId, tokens[index]!);
+      }
     });
+
+    if (successCount > 0) {
+      logger.info('FCM push delivered', { userId, type, successCount, tokenCount: tokens.length });
+    }
   } catch (e) {
-    logger.error('FCM send failed', { err: e instanceof Error ? e.message : String(e) });
+    logger.error('FCM send failed', {
+      userId,
+      type,
+      err: e instanceof Error ? e.message : String(e),
+    });
   }
 }
 
@@ -148,12 +209,15 @@ export const notificationsService = {
     });
   },
 
-  async notifyNewMessage(receiverId: string, fromName: string) {
+  async notifyNewMessage(receiverId: string, fromName: string, conversationId?: string) {
     if (!(await isPrefEnabled(receiverId, 'messages_enabled'))) return;
     await push(receiverId, {
       title: fromName || 'Nuevo mensaje',
       body: 'Tienes un nuevo mensaje. / You received a new message.',
-      data: { type: 'new_message' },
+      data: {
+        type: 'new_message',
+        ...(conversationId ? { conversationId } : {}),
+      },
     });
   },
 
