@@ -139,34 +139,34 @@ export function welcomeVerificationEmail(vars: VerifyEmailVars): {
   };
 }
 
-export function passwordResetEmail(vars: { firstName?: string | null; resetUrl: string }): {
+export function passwordResetEmail(vars: { firstName?: string | null; code: string }): {
   subject: string;
   html: string;
   text: string;
 } {
   const greetingEs = vars.firstName ? `¡Hola, ${escape(vars.firstName)}!` : '¡Hola!';
-  const safeUrl = escape(vars.resetUrl);
+  const safeCode = escape(vars.code);
   const inner = `
     <h1 style="margin:0 0 12px 0;font-family:'Georgia',serif;font-size:24px;color:${BRAND.ink};">${greetingEs}</h1>
     <p style="margin:0 0 14px 0;font-size:15px;line-height:22px;color:${BRAND.ink};">
       Hemos recibido una solicitud para restablecer tu contraseña en Citas
-      Mallorca. El enlace caduca en una hora.
+      Mallorca. Introduce este código en la app. Caduca en 15 minutos.
     </p>
-    <table cellpadding="0" cellspacing="0" border="0" style="margin:18px 0;">
-      <tr><td align="center" bgcolor="${BRAND.coral}" style="border-radius:999px;">
-        <a href="${safeUrl}" style="display:inline-block;padding:14px 26px;color:${BRAND.white};font-weight:700;text-decoration:none;font-size:15px;border-radius:999px;">
-          Restablecer contraseña
-        </a>
-      </td></tr>
+    <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:20px 0;">
+      <tr>
+        <td align="center" style="background:${BRAND.coralSoft};border-radius:16px;padding:20px 24px;border:1px solid ${BRAND.border};">
+          <p style="margin:0 0 8px 0;font-size:13px;color:${BRAND.inkSoft};letter-spacing:0.4px;">Tu código de verificación</p>
+          <p style="margin:0;font-size:34px;font-weight:700;letter-spacing:8px;color:${BRAND.ink};font-family:monospace;">${safeCode}</p>
+        </td>
+      </tr>
     </table>
     <p style="margin:0 0 10px 0;font-size:13px;color:${BRAND.inkSoft};">
-      Si el botón no funciona, copia y pega este enlace en tu navegador:<br />
-      <a href="${safeUrl}" style="color:${BRAND.coral};word-break:break-all;">${safeUrl}</a>
+      Si no has solicitado este cambio, puedes ignorar este correo.
     </p>
     <hr style="border:none;border-top:1px solid ${BRAND.border};margin:24px 0;" />
     <p style="margin:0 0 12px 0;font-size:14px;line-height:21px;color:${BRAND.ink};">
-      We received a request to reset your password. The link expires in one
-      hour. If it wasn't you, please ignore this email.
+      We received a request to reset your password. Enter this code in the app.
+      It expires in 15 minutes. If it wasn't you, please ignore this email.
     </p>
   `;
   return {
@@ -174,7 +174,8 @@ export function passwordResetEmail(vars: { firstName?: string | null; resetUrl: 
     html: shell(inner),
     text:
       `${greetingEs}\n\nHemos recibido una solicitud para restablecer tu ` +
-      `contraseña. El enlace caduca en una hora.\n\n${vars.resetUrl}\n\n` +
+      `contraseña. Introduce este código en la app. Caduca en 15 minutos.\n\n` +
+      `Código / Code: ${vars.code}\n\n` +
       `If you did not request this, ignore this email.`,
   };
 }

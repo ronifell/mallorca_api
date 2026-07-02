@@ -24,6 +24,11 @@ import {
 } from './auth.schemas';
 
 const VERIFICATION_TOKEN_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+const PASSWORD_RESET_CODE_TTL_MS = 15 * 60 * 1000; // 15 min
+
+function generatePasswordResetCode(): string {
+  return String(crypto.randomInt(100000, 1000000));
+}
 
 function buildVerifyUrl(rawToken: string): string {
   const base = env.apiBaseUrl.replace(/\/$/, '');
@@ -515,18 +520,24 @@ export const authService = {
     // Always return success to avoid email enumeration. Only send email if exists.
     if (!user || !user.password_hash) return;
 
-    const raw = crypto.randomBytes(32).toString('hex');
-    const tokenHash = crypto.createHash('sha256').update(raw).digest('hex');
-    const expires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+    const code = generatePasswordResetCode();
+    const tokenHash = crypto.createHash('sha256').update(code).digest('hex');
+    const expires = new Date(Date.now() + PASSWORD_RESET_CODE_TTL_MS);
 
-    await query(
-      `INSERT INTO password_resets (user_id, token_hash, expires_at)
-       VALUES ($1, $2, $3)`,
-      [user.id, tokenHash, expires],
-    );
+    await withTransaction(async (client) => {
+      await client.query(
+        `UPDATE password_resets SET used_at = NOW()
+         WHERE user_id = $1 AND used_at IS NULL`,
+        [user.id],
+      );
+      await client.query(
+        `INSERT INTO password_resets (user_id, token_hash, expires_at)
+         VALUES ($1, $2, $3)`,
+        [user.id, tokenHash, expires],
+      );
+    });
 
-    const resetUrl = `${env.apiBaseUrl.replace(/\/$/, '')}/reset-password?token=${raw}`;
-    const tpl = passwordResetEmail({ firstName: null, resetUrl });
+    const tpl = passwordResetEmail({ firstName: null, code });
     await sendMail({
       to: input.email,
       subject: tpl.subject,
@@ -539,17 +550,20 @@ export const authService = {
     if (!isStrongPassword(input.password)) {
       throw BadRequest('Password is not strong enough');
     }
-    const tokenHash = crypto.createHash('sha256').update(input.token).digest('hex');
+    const codeHash = crypto.createHash('sha256').update(input.code).digest('hex');
 
     const r = await query<{ id: string; user_id: string; used_at: Date | null; expires_at: Date }>(
-      `SELECT id, user_id, used_at, expires_at
-       FROM password_resets
-       WHERE token_hash = $1`,
-      [tokenHash],
+      `SELECT pr.id, pr.user_id, pr.used_at, pr.expires_at
+       FROM password_resets pr
+       JOIN users u ON u.id = pr.user_id
+       WHERE u.email = $1 AND pr.token_hash = $2 AND pr.used_at IS NULL
+       ORDER BY pr.created_at DESC
+       LIMIT 1`,
+      [input.email.toLowerCase(), codeHash],
     );
     const row = r.rows[0];
-    if (!row || row.used_at || row.expires_at.getTime() < Date.now()) {
-      throw BadRequest('Invalid or expired token');
+    if (!row || row.expires_at.getTime() < Date.now()) {
+      throw BadRequest('Invalid or expired code');
     }
 
     const newHash = await hashPassword(input.password);
