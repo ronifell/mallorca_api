@@ -5,24 +5,33 @@
  * process; we simply log and skip sending. This is helpful for local dev and
  * for staging environments that should not deliver real pushes.
  */
+import admin from 'firebase-admin';
 import { query } from '../../config/database';
 import { env } from '../../config/env';
 import { logger } from '../../utils/logger';
 
-type FirebaseModule = typeof import('firebase-admin');
-
-let firebase: FirebaseModule | null = null;
 let initialized = false;
 let initFailed = false;
 let missingConfigLogged = false;
 
 export function isFcmConfigured(): boolean {
-  return !!(env.firebase.projectId && env.firebase.clientEmail && env.firebase.privateKey);
+  const { projectId, clientEmail, privateKey } = env.firebase;
+  return !!(
+    projectId &&
+    clientEmail &&
+    privateKey &&
+    privateKey.includes('BEGIN PRIVATE KEY')
+  );
 }
 
-async function getFirebase(): Promise<FirebaseModule | null> {
+/** Used by verify-push.ts to exercise the same init path as live chat pushes. */
+export function ensureFirebaseInitialized(): boolean {
+  return getFirebase() !== null;
+}
+
+function getFirebase(): typeof admin | null {
   if (initFailed) return null;
-  if (initialized && firebase) return firebase;
+  if (initialized) return admin;
   if (!isFcmConfigured()) {
     if (!missingConfigLogged) {
       missingConfigLogged = true;
@@ -31,8 +40,7 @@ async function getFirebase(): Promise<FirebaseModule | null> {
     return null;
   }
   try {
-    const admin = await import('firebase-admin');
-    if (!admin.apps.length) {
+    if (admin.apps.length === 0) {
       admin.initializeApp({
         credential: admin.credential.cert({
           projectId: env.firebase.projectId,
@@ -41,13 +49,16 @@ async function getFirebase(): Promise<FirebaseModule | null> {
         }),
       });
     }
-    firebase = admin;
     initialized = true;
+    logger.info('Firebase Admin initialized for FCM', { projectId: env.firebase.projectId });
     return admin;
   } catch (e) {
     initFailed = true;
     logger.error('Failed to initialize Firebase Admin', {
       err: e instanceof Error ? e.message : String(e),
+      stack: e instanceof Error ? e.stack : undefined,
+      privateKeyLength: env.firebase.privateKey.length,
+      hasBeginMarker: env.firebase.privateKey.includes('BEGIN PRIVATE KEY'),
     });
     return null;
   }
@@ -112,8 +123,8 @@ async function push(
   payload: { title: string; body: string; data?: Record<string, string> },
 ) {
   const type = payload.data?.type ?? 'unknown';
-  const admin = await getFirebase();
-  if (!admin) {
+  const adminSdk = getFirebase();
+  if (!adminSdk) {
     logger.warn('FCM push skipped — Firebase not configured', { userId, type });
     return;
   }
@@ -129,7 +140,7 @@ async function push(
     // Hybrid payload: Android shows the `notification` block in the system tray
     // when the app is backgrounded/killed (most reliable path). The `data` block
     // is still delivered for Expo when onMessageReceived runs in the foreground.
-    const result = await admin.messaging().sendEachForMulticast({
+    const result = await adminSdk.messaging().sendEachForMulticast({
       tokens,
       notification: {
         title: payload.title,
