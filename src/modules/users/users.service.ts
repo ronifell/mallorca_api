@@ -3,6 +3,7 @@ import { resolveStoredUrl, uploadImage } from '../../services/storage';
 import { calculateAge, isAdult, MIN_AGE } from '../../utils/age';
 import { categoryMessage, inspectContent } from '../../utils/contentFilter';
 import { BadRequest, Conflict, ContentBlocked, NotFound } from '../../utils/errors';
+import { logger } from '../../utils/logger';
 import type { Gender } from '../discovery/compatibility';
 import { UpdateProfileInput } from './users.schemas';
 
@@ -427,6 +428,7 @@ export const usersService = {
 
   async updateFcmToken(userId: string, token: string): Promise<void> {
     await query('UPDATE users SET fcm_token = $1 WHERE id = $2', [token, userId]);
+    logger.info('FCM token saved for user', { userId, tokenPrefix: token.slice(0, 12) });
   },
 
   async updateNotificationSettings(
