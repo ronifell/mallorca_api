@@ -30,7 +30,9 @@ export const chatController = {
     const data = sendMessageSchema.parse(req.body);
     const msg = await chatService.sendMessage(userId(req), id, data);
 
-    // Push the message to both participants' rooms (sender included for echo).
+    // Real-time delivery to connected clients in the conversation room.
+    getIO().to(`conversation:${id}`).emit('message:new', msg);
+    // Push the message to both participants' user rooms (covers clients not in the room).
     getIO().to(`user:${msg.receiverId}`).emit('message:new', msg);
     getIO().to(`user:${msg.senderId}`).emit('message:new', msg);
 
