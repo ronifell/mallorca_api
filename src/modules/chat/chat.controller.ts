@@ -10,6 +10,7 @@ import {
 import { chatService } from './chat.service';
 import { getIO } from '../../sockets/io';
 import { query } from '../../config/database';
+import { logger } from '../../utils/logger';
 
 function userId(req: Request): string {
   if (!req.user) throw Unauthorized();
@@ -51,12 +52,20 @@ export const chatController = {
       'SELECT first_name FROM users WHERE id = $1',
       [msg.senderId],
     );
-    void notificationsService.notifyNewMessage(
-      msg.receiverId,
-      nameR.rows[0]?.first_name ?? 'Citas Mallorca',
-      msg.conversationId,
-      messagePreview(msg),
-    );
+    try {
+      await notificationsService.notifyNewMessage(
+        msg.receiverId,
+        nameR.rows[0]?.first_name ?? 'Citas Mallorca',
+        msg.conversationId,
+        messagePreview(msg),
+      );
+    } catch (e) {
+      logger.error('Chat message push failed', {
+        receiverId: msg.receiverId,
+        conversationId: msg.conversationId,
+        err: e instanceof Error ? e.message : String(e),
+      });
+    }
 
     res.status(201).json(msg);
   },

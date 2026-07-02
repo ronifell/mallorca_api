@@ -14,13 +14,20 @@ type FirebaseModule = typeof import('firebase-admin');
 let firebase: FirebaseModule | null = null;
 let initialized = false;
 let initFailed = false;
+let missingConfigLogged = false;
+
+export function isFcmConfigured(): boolean {
+  return !!(env.firebase.projectId && env.firebase.clientEmail && env.firebase.privateKey);
+}
 
 async function getFirebase(): Promise<FirebaseModule | null> {
   if (initFailed) return null;
   if (initialized && firebase) return firebase;
-  if (!env.firebase.projectId || !env.firebase.clientEmail || !env.firebase.privateKey) {
-    initFailed = true;
-    logger.warn('FCM not configured; push notifications disabled');
+  if (!isFcmConfigured()) {
+    if (!missingConfigLogged) {
+      missingConfigLogged = true;
+      logger.warn('FCM not configured; push notifications disabled');
+    }
     return null;
   }
   try {
@@ -240,9 +247,16 @@ export const notificationsService = {
     conversationId?: string,
     preview?: string,
   ) {
-    if (!(await isPrefEnabled(receiverId, 'messages_enabled'))) return;
+    if (!(await isPrefEnabled(receiverId, 'messages_enabled'))) {
+      logger.info('FCM push skipped — message notifications disabled for user', {
+        receiverId,
+        conversationId,
+      });
+      return;
+    }
     const body =
       preview?.trim() || 'Tienes un nuevo mensaje. / You received a new message.';
+    logger.info('FCM push sending new_message', { receiverId, conversationId });
     await push(receiverId, {
       title: fromName || 'Nuevo mensaje',
       body,
