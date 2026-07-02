@@ -1,7 +1,16 @@
 import dotenv from 'dotenv';
+import fs from 'fs';
 import path from 'path';
 
-dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+// Always load Backend/.env even when pm2 starts from another cwd.
+// (verify-push.ts works because it is run from Backend/; the API often is not.)
+const backendRoot = path.resolve(__dirname, '..', '..');
+const backendEnvPath = path.join(backendRoot, '.env');
+if (fs.existsSync(backendEnvPath)) {
+  dotenv.config({ path: backendEnvPath });
+} else {
+  dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+}
 
 const required = (key: string, fallback?: string): string => {
   const v = process.env[key] ?? fallback;

@@ -3,6 +3,7 @@ import { createApp } from './app';
 import { env } from './config/env';
 import { initIO } from './sockets/io';
 import { logger } from './utils/logger';
+import { isFcmConfigured } from './modules/notifications/notifications.service';
 import { subscriptionsService } from './modules/subscriptions/subscriptions.service';
 
 async function main() {
@@ -11,7 +12,17 @@ async function main() {
   initIO(server);
 
   server.listen(env.port, '0.0.0.0', () => {
-    logger.info('Server started', { port: env.port, env: env.nodeEnv });
+    logger.info('Server started', {
+      port: env.port,
+      env: env.nodeEnv,
+      fcmConfigured: isFcmConfigured(),
+      fcmProjectId: env.firebase.projectId || null,
+    });
+    if (!isFcmConfigured()) {
+      logger.warn(
+        'FCM not configured at startup — chat push will not work until FIREBASE_* is set in Backend/.env and the process is restarted (pm2 restart mallorca-api)',
+      );
+    }
   });
 
   // Lightweight scheduler for subscription expiry. In production prefer a
