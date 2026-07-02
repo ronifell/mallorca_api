@@ -9,7 +9,11 @@ dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
 import { env } from '../src/config/env';
 import { pool } from '../src/config/database';
-import { notificationsService } from '../src/modules/notifications/notifications.service';
+import {
+  ensureFirebaseInitialized,
+  isFcmConfigured,
+  notificationsService,
+} from '../src/modules/notifications/notifications.service';
 
 type StepResult = { step: string; ok: boolean; detail: string };
 
@@ -22,33 +26,21 @@ function record(step: string, ok: boolean, detail: string) {
 }
 
 async function verifyFirebaseCredentials(): Promise<void> {
-  const hasProject = !!env.firebase.projectId;
-  const hasEmail = !!env.firebase.clientEmail;
-  const hasKey = !!env.firebase.privateKey;
   record(
     'Firebase env vars',
-    hasProject && hasEmail && hasKey,
-    hasProject && hasEmail && hasKey
+    isFcmConfigured(),
+    isFcmConfigured()
       ? `project=${env.firebase.projectId}`
-      : `missing: project=${hasProject}, email=${hasEmail}, key=${hasKey}`,
+      : `missing or invalid PEM — project=${!!env.firebase.projectId}, email=${!!env.firebase.clientEmail}, key=${env.firebase.privateKey.includes('BEGIN PRIVATE KEY')}`,
   );
-  if (!hasProject || !hasEmail || !hasKey) return;
+  if (!isFcmConfigured()) return;
 
-  try {
-    const admin = await import('firebase-admin');
-    if (!admin.apps.length) {
-      admin.initializeApp({
-        credential: admin.credential.cert({
-          projectId: env.firebase.projectId,
-          clientEmail: env.firebase.clientEmail,
-          privateKey: env.firebase.privateKey,
-        }),
-      });
-    }
-    record('Firebase Admin init', true, 'credentials accepted');
-  } catch (e) {
-    record('Firebase Admin init', false, e instanceof Error ? e.message : String(e));
-  }
+  const ok = ensureFirebaseInitialized();
+  record(
+    'Firebase Admin init (notifications service)',
+    ok,
+    ok ? 'credentials accepted via production code path' : 'see error logs above',
+  );
 }
 
 async function verifyDatabaseTokens(): Promise<{ userId: string; email: string; token: string } | null> {
