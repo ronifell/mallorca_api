@@ -68,9 +68,45 @@ service-account credentials). If unset, notifications are silently skipped.
 
 ### Google Play purchase validation
 
-Place the service-account JSON in `GOOGLE_SERVICE_ACCOUNT_JSON`. In dev (no
-credentials), the validator grants a 30/365-day Premium grant per plan to make
-end-to-end testing of the gated chat possible.
+Place the service-account JSON in `GOOGLE_SERVICE_ACCOUNT_JSON` and the app
+package in `GOOGLE_PLAY_PACKAGE_NAME`. The service account needs the "View
+financial data" and "Manage orders and subscriptions" Play Console permissions.
+
+The validator:
+
+1. Calls `androidpublisher.purchases.subscriptions.get`.
+2. Rejects tokens with no active payment (`paymentState=undefined`) or an
+   expiry in the past.
+3. Refuses to grant Premium while `paymentState=0` (pending — bank hold /
+   family approval); the RTDN webhook resyncs on `SUBSCRIPTION_PURCHASED`.
+4. Acknowledges the subscription server-side within the 3-day window Google
+   requires before auto-refunding.
+
+Set `BILLING_ALLOW_MOCK=true` in dev to grant a 30/365-day mock Premium when
+credentials are absent. **Production must leave `BILLING_ALLOW_MOCK` unset.**
+
+### Real-Time Developer Notifications (RTDN)
+
+Renewals / cancellations / grace periods / refunds are pushed by Google via
+Pub/Sub. Set up the pipeline once:
+
+1. Google Cloud Console → **Pub/Sub → Create topic**, e.g.
+   `play-billing-notifications`.
+2. Grant `google-play-developer-notifications@system.gserviceaccount.com` the
+   `Pub/Sub Publisher` role on the topic.
+3. Play Console → **Monetize → Monetization setup → Real-time developer
+   notifications** → paste the topic name; use "Send test notification" once
+   to confirm.
+4. Create a **push** subscription on the topic with the endpoint:
+
+    ```
+    https://<your-api-host>/api/subscriptions/webhooks/google-play?token=<GOOGLE_PLAY_RTDN_TOKEN>
+    ```
+
+5. Set `GOOGLE_PLAY_RTDN_TOKEN` in `.env` to the same value used above.
+
+The endpoint is unauthenticated (it must be reachable by Pub/Sub) but rejects
+requests whose `?token=` does not match.
 
 ## Core API surface
 
@@ -104,6 +140,7 @@ end-to-end testing of the gated chat possible.
 | GET    | `/api/subscriptions/plans`                          | public   | Plan catalog                             |
 | GET    | `/api/subscriptions/status`                         | auth     | My premium status                        |
 | POST   | `/api/subscriptions/validate`                       | auth     | Validate a Play purchase token           |
+| POST   | `/api/subscriptions/webhooks/google-play`           | shared   | Google Play RTDN push endpoint           |
 | GET    | `/api/moderation/blocks`                            | auth     | List blocked users                       |
 | POST   | `/api/moderation/blocks/:id`                        | auth     | Block user                               |
 | DELETE | `/api/moderation/blocks/:id`                        | auth     | Unblock user                             |
