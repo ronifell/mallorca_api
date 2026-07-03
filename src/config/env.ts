@@ -77,6 +77,11 @@ export const env = {
   googlePlay: {
     packageName: process.env.GOOGLE_PLAY_PACKAGE_NAME ?? '',
     serviceAccountJson: process.env.GOOGLE_SERVICE_ACCOUNT_JSON ?? '',
+    /**
+     * Shared secret appended as `?token=...` to the Pub/Sub push
+     * subscription URL. Rotate whenever the URL is rotated.
+     */
+    rtdnToken: process.env.GOOGLE_PLAY_RTDN_TOKEN ?? '',
   },
 
   googleAuth: {
