@@ -7,6 +7,7 @@ import { handleGooglePlayRtdn } from './subscriptions.webhook';
 const router = Router();
 
 router.get('/plans', asyncHandler(subscriptionsController.plans));
+router.get('/config', asyncHandler(subscriptionsController.config));
 
 // Google Play Real-Time Developer Notifications. This route is UNAUTHENTICATED
 // on purpose — it must be reachable by Google Pub/Sub. It is guarded by a

@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { env } from '../../config/env';
 import { Unauthorized } from '../../utils/errors';
 import { validatePurchaseSchema } from './subscriptions.schemas';
 import { subscriptionsService } from './subscriptions.service';
@@ -9,6 +10,19 @@ function userId(req: Request): string {
 }
 
 export const subscriptionsController = {
+  /**
+   * Public billing configuration for the mobile app. When `mockEnabled` is
+   * true the app should skip the native store purchase sheet and complete
+   * the flow with a mock token — the backend validator will accept it as
+   * long as `BILLING_ALLOW_MOCK=true`. This lets the whole Premium flow be
+   * exercised end-to-end without a real Google Play charge.
+   */
+  async config(_req: Request, res: Response) {
+    res.json({
+      mockEnabled: env.billing.allowMock,
+    });
+  },
+
   async plans(_req: Request, res: Response) {
     res.json({
       plans: [
