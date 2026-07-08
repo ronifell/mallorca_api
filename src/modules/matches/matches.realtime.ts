@@ -33,9 +33,16 @@ async function loadMatchUsers(
   }>(
     `SELECT u.id,
             u.first_name,
-            (SELECT image_url   FROM photos WHERE user_id = u.id ORDER BY order_index ASC LIMIT 1) AS image_url,
-            (SELECT storage_key FROM photos WHERE user_id = u.id ORDER BY order_index ASC LIMIT 1) AS storage_key
+            ph.image_url,
+            ph.storage_key
        FROM users u
+       LEFT JOIN LATERAL (
+         SELECT image_url, storage_key
+           FROM photos
+          WHERE user_id = u.id
+          ORDER BY order_index ASC
+          LIMIT 1
+       ) ph ON TRUE
       WHERE u.id IN ($1, $2)`,
     [userAId, userBId],
   );

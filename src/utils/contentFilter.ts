@@ -101,7 +101,9 @@ const SOCIAL_PLATFORM_RE = wordList([
 
 // --- Phone numbers ----------------------------------------------------------
 // Candidate runs of digits/separators; verified by digit count afterwards.
-const PHONE_CANDIDATE_RE = /\+?\d(?:[\d\s().-]{5,}\d)/g;
+// The separator class is intentionally wide to catch symbol-obfuscated numbers
+// such as "6*6*6_7-7-7" or "6·6·6•7•7•7".
+const PHONE_CANDIDATE_RE = /\+?\d(?:[\d\s().\-*_+·•/\\|#,]{5,}\d)/g;
 
 // --- Spam -------------------------------------------------------------------
 const REPEATED_CHAR_RE = /(.)\1{7,}/;
@@ -231,14 +233,91 @@ const ILLEGAL_RE = wordList([
   'lolita',
 ]);
 
-function hasLink(folded: string, raw: string): boolean {
-  return URL_RE.test(raw) || DOMAIN_RE.test(folded) || OBFUSCATED_DOMAIN_RE.test(folded);
+// --- De-obfuscation ---------------------------------------------------------
+// Users try to slip contact info past the filter by (a) spacing letters/digits
+// out with symbols ("i n s t a", "6.6.6-7.7.7"), (b) leetspeak ("1nstagr4m",
+// "wh4ts4pp") and (c) writing emails with "at"/"dot" words. We normalise the
+// text into several variants and run every rule against all of them.
+
+const SEPARATOR_CHARS = "\\s._\\-*·•|/\\\\~^=+#,:;'\"()\\[\\]{}";
+const SEPARATOR_RUN_RE = new RegExp(`[${SEPARATOR_CHARS}]+`, 'g');
+// A run of individually-separated single characters, e.g. "i n s t a" or
+// "6.6.6.7". Only single-char tokens are collapsed so normal spaced words are
+// left untouched.
+const SPACED_CHARS_RE = new RegExp(
+  `\\b(?:[a-z0-9](?:[${SEPARATOR_CHARS}]+)){2,}[a-z0-9]\\b`,
+  'gi',
+);
+
+const LEET_MAP: Record<string, string> = {
+  '0': 'o',
+  '1': 'i',
+  '3': 'e',
+  '4': 'a',
+  '5': 's',
+  '7': 't',
+  '8': 'b',
+  '9': 'g',
+  '@': 'a',
+  $: 's',
+  '€': 'e',
+  '!': 'i',
+};
+
+function deLeet(text: string): string {
+  return text.replace(/[013457890@$€!]/g, (c) => LEET_MAP[c] ?? c);
 }
 
-function hasPhone(raw: string): boolean {
+/** Collapse runs of single characters separated by symbols/spaces. */
+function collapseSpacedChars(text: string): string {
+  return text.replace(SPACED_CHARS_RE, (m) => m.replace(SEPARATOR_RUN_RE, ''));
+}
+
+// Emails, including obfuscated "at"/"dot" spellings.
+const EMAIL_RE =
+  /[a-z0-9._%+-]+\s*(?:@|\(\s*at\s*\)|\[\s*at\s*\]|\s+at\s+|\s+arroba\s+)\s*[a-z0-9.-]+\s*(?:\.|\(\s*dot\s*\)|\[\s*dot\s*\]|\s+dot\s+|\s+punto\s+)\s*[a-z]{2,}/i;
+
+// Number words (EN + ES). Seven or more in a message is almost always a
+// spelled-out phone number.
+const NUMBER_WORDS_RE =
+  /\b(zero|one|two|three|four|five|six|seven|eight|nine|oh|cero|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve)\b/gi;
+
+/** Build the normalised variants a rule should be tested against. */
+function buildVariants(raw: string): string[] {
+  const folded = fold(raw);
+  const variants = new Set<string>([
+    folded,
+    deLeet(folded),
+    collapseSpacedChars(folded),
+    collapseSpacedChars(deLeet(folded)),
+  ]);
+  return [...variants];
+}
+
+function matchAny(variants: string[], re: RegExp): RegExpMatchArray | null {
+  for (const v of variants) {
+    const m = v.match(re);
+    if (m) return m;
+  }
+  return null;
+}
+
+function testAny(variants: string[], re: RegExp): boolean {
+  return variants.some((v) => re.test(v));
+}
+
+function hasLink(variants: string[], raw: string): boolean {
+  return (
+    URL_RE.test(raw) ||
+    testAny(variants, DOMAIN_RE) ||
+    testAny(variants, OBFUSCATED_DOMAIN_RE)
+  );
+}
+
+function countDigitRun(text: string): boolean {
   PHONE_CANDIDATE_RE.lastIndex = 0;
   let m: RegExpExecArray | null;
-  while ((m = PHONE_CANDIDATE_RE.exec(raw)) !== null) {
+  while ((m = PHONE_CANDIDATE_RE.exec(text)) !== null) {
     const digits = m[0].replace(/\D/g, '');
     // 7–15 digits covers local numbers up to full E.164 length.
     if (digits.length >= 7 && digits.length <= 15) return true;
@@ -246,16 +325,26 @@ function hasPhone(raw: string): boolean {
   return false;
 }
 
-function hasSocial(folded: string, raw: string, context: FilterContext): boolean {
-  if (HANDLE_RE.test(raw)) return true;
-  if (SOCIAL_PLATFORM_RE.test(folded)) {
-    // Mentioning a platform anywhere is treated as an attempt to move
-    // off-platform; this is the behaviour we want for both profile and chat.
-    return true;
-  }
-  // `context` reserved for future stricter/looser tuning per surface.
-  void context;
+function hasPhone(variants: string[], raw: string): boolean {
+  // Raw + collapsed variants: collapsing turns "6 6 6 - 7 7 7" into "6667777".
+  if (countDigitRun(raw)) return true;
+  if (variants.some((v) => countDigitRun(v))) return true;
+  // Spelled-out numbers ("six five five ...").
+  const words = raw.match(NUMBER_WORDS_RE);
+  if (words && words.length >= 7) return true;
   return false;
+}
+
+function hasEmail(variants: string[]): boolean {
+  return testAny(variants, EMAIL_RE);
+}
+
+function hasSocial(variants: string[], raw: string): boolean {
+  if (HANDLE_RE.test(raw)) return true;
+  if (testAny(variants, HANDLE_RE)) return true;
+  // Mentioning a platform anywhere is treated as an attempt to move
+  // off-platform; this is the behaviour we want for both profile and chat.
+  return testAny(variants, SOCIAL_PLATFORM_RE);
 }
 
 function isCapsFlood(raw: string): boolean {
@@ -265,11 +354,11 @@ function isCapsFlood(raw: string): boolean {
   return upper / letters.length >= 0.8;
 }
 
-function hasSpam(folded: string, raw: string): boolean {
+function hasSpam(variants: string[], raw: string): boolean {
   return (
     REPEATED_CHAR_RE.test(raw) ||
-    REPEATED_WORD_RE.test(folded) ||
-    SPAM_PHRASE_RE.test(folded) ||
+    testAny(variants, REPEATED_WORD_RE) ||
+    testAny(variants, SPAM_PHRASE_RE) ||
     isCapsFlood(raw)
   );
 }
@@ -280,21 +369,28 @@ function hasSpam(folded: string, raw: string): boolean {
  */
 export function inspectContent(raw: string, context: FilterContext = 'chat'): FilterResult {
   if (!raw || !raw.trim()) return { blocked: false };
-  const folded = fold(raw);
+  // `context` reserved for future stricter/looser tuning per surface. Profile
+  // and chat are held to the same standard today.
+  void context;
 
-  const illegal = folded.match(ILLEGAL_RE);
+  const variants = buildVariants(raw);
+
+  const illegal = matchAny(variants, ILLEGAL_RE);
   if (illegal) return { blocked: true, category: 'illegal', match: illegal[1] };
 
-  const sexual = folded.match(SEXUAL_RE);
+  const sexual = matchAny(variants, SEXUAL_RE);
   if (sexual) return { blocked: true, category: 'sexual', match: sexual[1] };
 
-  const aggressive = folded.match(AGGRESSIVE_RE);
+  const aggressive = matchAny(variants, AGGRESSIVE_RE);
   if (aggressive) return { blocked: true, category: 'aggressive', match: aggressive[1] };
 
-  if (hasLink(folded, raw)) return { blocked: true, category: 'link' };
-  if (hasPhone(raw)) return { blocked: true, category: 'phone' };
-  if (hasSocial(folded, raw, context)) return { blocked: true, category: 'social' };
-  if (hasSpam(folded, raw)) return { blocked: true, category: 'spam' };
+  // Email before link so contact addresses are reported as external contact
+  // ("social") rather than a generic website link.
+  if (hasEmail(variants)) return { blocked: true, category: 'social' };
+  if (hasLink(variants, raw)) return { blocked: true, category: 'link' };
+  if (hasPhone(variants, raw)) return { blocked: true, category: 'phone' };
+  if (hasSocial(variants, raw)) return { blocked: true, category: 'social' };
+  if (hasSpam(variants, raw)) return { blocked: true, category: 'spam' };
 
   return { blocked: false };
 }

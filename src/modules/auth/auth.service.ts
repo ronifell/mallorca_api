@@ -90,7 +90,11 @@ function hasGoogleConsent(input: GoogleLoginInput): boolean {
 async function verifyGoogleIdToken(
   idToken: string,
 ): Promise<{ sub: string; email: string; emailVerified: boolean }> {
-  const audiences = [env.googleAuth.clientId, env.googleAuth.iosClientId].filter(Boolean);
+  const audiences = [
+    env.googleAuth.clientId,
+    env.googleAuth.iosClientId,
+    env.googleAuth.androidClientId,
+  ].filter(Boolean);
   if (audiences.length === 0) {
     throw BadRequest('Google sign-in is not configured on the server');
   }

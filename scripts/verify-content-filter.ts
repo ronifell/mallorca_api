@@ -42,6 +42,23 @@ const cases: Case[] = [
 
   // --- Spam ---
   { label: 'spam phrase', text: 'gana dinero facil desde casa', context: 'chat', expectBlocked: true, expectCategory: 'spam' },
+
+  // --- Obfuscation bypass attempts (symbols / spacing / leetspeak) ---
+  { label: 'phone symbol-separated', text: 'llamame 6*6*6*7*7*7*8', context: 'chat', expectBlocked: true, expectCategory: 'phone' },
+  { label: 'phone dot-separated', text: '6.1.2.3.4.5.6.7.8', context: 'chat', expectBlocked: true, expectCategory: 'phone' },
+  { label: 'phone single-spaced digits', text: '6 1 2 3 4 5 6 7 8', context: 'profile', expectBlocked: true, expectCategory: 'phone' },
+  { label: 'instagram spaced letters', text: 'sigueme en i n s t a g r a m', context: 'chat', expectBlocked: true, expectCategory: 'social' },
+  { label: 'instagram leetspeak', text: 'mi 1nstagr4m es guay', context: 'profile', expectBlocked: true, expectCategory: 'social' },
+  { label: 'whatsapp leetspeak', text: 'escribeme wh4ts4pp', context: 'chat', expectBlocked: true, expectCategory: 'social' },
+  { label: 'instagram dotted', text: 'i.n.s.t.a: coolguy', context: 'profile', expectBlocked: true, expectCategory: 'social' },
+  { label: 'email plain', text: 'escribeme a juan@gmail.com', context: 'chat', expectBlocked: true, expectCategory: 'social' },
+  { label: 'email at/dot spelled', text: 'juan at gmail dot com', context: 'profile', expectBlocked: true, expectCategory: 'social' },
+  { label: 'email arroba/punto', text: 'juan arroba gmail punto es', context: 'chat', expectBlocked: true, expectCategory: 'social' },
+
+  // --- Allowed (guard against false positives) ---
+  { label: 'age + height', text: 'Tengo 25 años y mido 180', context: 'profile', expectBlocked: false },
+  { label: 'price mention', text: 'La cena cuesta 1500 pesetas', context: 'chat', expectBlocked: false },
+  { label: 'normal spaced sentence', text: 'nos vemos el fin de semana', context: 'chat', expectBlocked: false },
 ];
 
 type SurfaceCheck = { surface: string; frontend: string; backend: string };
