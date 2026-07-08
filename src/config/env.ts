@@ -85,10 +85,22 @@ export const env = {
   },
 
   googleAuth: {
-    /** Web OAuth client ID — used to verify Google ID tokens from the mobile app. */
-    clientId: process.env.GOOGLE_CLIENT_ID ?? '',
-    /** Optional iOS client ID (second allowed audience for verifyIdToken). */
+    /**
+     * Web OAuth client ID — used to verify Google ID tokens from the mobile app.
+     * The mobile app configures Google Sign-In with this same web client ID as
+     * the token audience, so it MUST match. Client IDs are not secrets (they
+     * ship inside the app), so we default to the app's public web client ID to
+     * avoid Google login silently failing when GOOGLE_CLIENT_ID is unset.
+     */
+    clientId:
+      process.env.GOOGLE_CLIENT_ID ??
+      '348711983822-7tp79tt59u3vrsusl2iave6o0taqpaiv.apps.googleusercontent.com',
+    /** Optional iOS client ID (additional allowed audience for verifyIdToken). */
     iosClientId: process.env.GOOGLE_IOS_CLIENT_ID ?? '',
+    /** Android client ID — accepted as an audience for robustness. */
+    androidClientId:
+      process.env.GOOGLE_ANDROID_CLIENT_ID ??
+      '348711983822-t881asjhgq217qmiv1dle7gm00plvd0g.apps.googleusercontent.com',
   },
 
   billing: {
@@ -113,7 +125,7 @@ export const env = {
 
   contact: {
     info: process.env.CONTACT_INFO_EMAIL ?? 'info@citasmallorca.es',
-    support: process.env.CONTACT_SUPPORT_EMAIL ?? 'info@citasmallorca.es',
+    support: process.env.CONTACT_SUPPORT_EMAIL ?? 'support@citasmallorca.es',
   },
 
   rateLimit: {
