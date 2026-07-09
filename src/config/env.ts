@@ -6,10 +6,12 @@ import path from 'path';
 // (verify-push.ts works because it is run from Backend/; the API often is not.)
 const backendRoot = path.resolve(__dirname, '..', '..');
 const backendEnvPath = path.join(backendRoot, '.env');
+// override: true ensures Backend/.env wins over stale shell/pm2 env vars
+// (e.g. an old BILLING_ALLOW_MOCK=true left in the process environment).
 if (fs.existsSync(backendEnvPath)) {
-  dotenv.config({ path: backendEnvPath });
+  dotenv.config({ path: backendEnvPath, override: true });
 } else {
-  dotenv.config({ path: path.resolve(process.cwd(), '.env') });
+  dotenv.config({ path: path.resolve(process.cwd(), '.env'), override: true });
 }
 
 const required = (key: string, fallback?: string): string => {
