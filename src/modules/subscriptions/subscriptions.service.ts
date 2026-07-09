@@ -13,7 +13,7 @@
 import type { androidpublisher_v3 } from 'googleapis';
 import { query, withTransaction } from '../../config/database';
 import { env } from '../../config/env';
-import { BadRequest } from '../../utils/errors';
+import { BadRequest, Unauthorized } from '../../utils/errors';
 import { logger } from '../../utils/logger';
 
 export type Plan = 'monthly_premium' | 'annual_premium';
@@ -252,6 +252,11 @@ export const subscriptionsService = {
     userId: string,
     input: { platform: 'google_play' | 'app_store'; productId: string; purchaseToken: string },
   ): Promise<{ isPremium: boolean; expiryDate: string; status: string; productId: string }> {
+    const userRow = await query<{ id: string }>('SELECT id FROM users WHERE id = $1', [userId]);
+    if (!userRow.rows[0]) {
+      throw Unauthorized('Your session is no longer valid. Please sign out and sign in again.');
+    }
+
     if (!PRODUCT_DURATION_DAYS[input.productId]) {
       throw BadRequest(`Unknown product id: ${input.productId}`);
     }
