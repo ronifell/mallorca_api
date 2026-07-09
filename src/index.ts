@@ -17,6 +17,10 @@ async function main() {
       env: env.nodeEnv,
       fcmConfigured: isFcmConfigured(),
       fcmProjectId: env.firebase.projectId || null,
+      billingMockEnabled: env.billing.allowMock,
+      googlePlayValidationConfigured: Boolean(
+        env.googlePlay.serviceAccountJson && env.googlePlay.packageName,
+      ),
     });
     if (!isFcmConfigured()) {
       logger.warn(
