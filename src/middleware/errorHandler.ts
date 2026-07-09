@@ -31,6 +31,17 @@ export function errorHandler(
     return;
   }
 
+  const pgCode = (err as { code?: string }).code;
+  if (pgCode === '23503') {
+    res.status(401).json({
+      error: {
+        code: 'UNAUTHORIZED',
+        message: 'Your session is no longer valid. Please sign out and sign in again.',
+      },
+    });
+    return;
+  }
+
   logger.error('Unhandled error', {
     path: req.path,
     method: req.method,
