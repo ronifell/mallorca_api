@@ -18,8 +18,12 @@ export const subscriptionsController = {
    * exercised end-to-end without a real Google Play charge.
    */
   async config(_req: Request, res: Response) {
+    const googlePlayConfigured = Boolean(
+      env.googlePlay.serviceAccountJson && env.googlePlay.packageName,
+    );
     res.json({
       mockEnabled: env.billing.allowMock,
+      googlePlayConfigured,
     });
   },
 

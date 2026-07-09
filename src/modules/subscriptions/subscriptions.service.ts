@@ -67,12 +67,42 @@ interface ValidatedPurchase {
  */
 type PlaySubscriptionPurchase = androidpublisher_v3.Schema$SubscriptionPurchase;
 
+function parseServiceAccountCredentials(): Record<string, unknown> {
+  const raw = env.googlePlay.serviceAccountJson;
+  if (!raw) {
+    throw BadRequest(
+      'Google Play billing is not configured on the server. Please contact support.',
+    );
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    logger.error('GOOGLE_SERVICE_ACCOUNT_JSON is not valid JSON');
+    throw BadRequest(
+      'Google Play billing credentials are misconfigured on the server. Please contact support.',
+    );
+  }
+  if (!parsed || typeof parsed !== 'object') {
+    throw BadRequest(
+      'Google Play billing credentials are misconfigured on the server. Please contact support.',
+    );
+  }
+  const creds = parsed as Record<string, unknown>;
+  if (typeof creds.client_email !== 'string' || typeof creds.private_key !== 'string') {
+    throw BadRequest(
+      'Google Play billing credentials are incomplete on the server. Please contact support.',
+    );
+  }
+  return creds;
+}
+
 /** Cached AndroidPublisher client — avoids re-instantiating on every request. */
 let cachedAndroidPublisher: androidpublisher_v3.Androidpublisher | null = null;
 async function getAndroidPublisher(): Promise<androidpublisher_v3.Androidpublisher> {
   if (cachedAndroidPublisher) return cachedAndroidPublisher;
   const { google } = await import('googleapis');
-  const credentials = JSON.parse(env.googlePlay.serviceAccountJson);
+  const credentials = parseServiceAccountCredentials();
   const auth = new google.auth.GoogleAuth({
     credentials,
     scopes: ['https://www.googleapis.com/auth/androidpublisher'],
