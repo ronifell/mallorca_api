@@ -65,9 +65,11 @@ async function loadViewer(userId: string): Promise<ViewerProfile> {
     [userId],
   );
   const row = r.rows[0];
-  if (!row) throw NotFound('User not found');
+  if (!row) throw NotFound('No se ha encontrado el usuario.');
   if (!row.gender || !row.interested_in || !row.birth_date) {
-    throw BadRequest('Profile is incomplete: gender, birth date and interested-in are required');
+    throw BadRequest(
+      'Tu perfil está incompleto: necesitas indicar tu género, fecha de nacimiento y a quién buscas.',
+    );
   }
   return {
     id: row.id,
@@ -279,7 +281,7 @@ export const discoveryService = {
 
   /** Cancel a previously sent like. No-op if the like does not exist. */
   async unlike(userId: string, targetId: string): Promise<void> {
-    if (userId === targetId) throw BadRequest('Cannot unlike yourself');
+    if (userId === targetId) throw BadRequest('No puedes quitarte el like a ti mismo.');
     await query(
       'DELETE FROM likes WHERE sender_id = $1 AND receiver_id = $2',
       [userId, targetId],
@@ -305,7 +307,7 @@ export const discoveryService = {
   },
 
   async pass(userId: string, targetId: string): Promise<void> {
-    if (userId === targetId) throw BadRequest('Cannot pass on yourself');
+    if (userId === targetId) throw BadRequest('No puedes descartarte a ti mismo.');
     await query(
       `INSERT INTO passes (sender_id, receiver_id) VALUES ($1, $2)
          ON CONFLICT (sender_id, receiver_id) DO NOTHING`,
@@ -369,7 +371,7 @@ export const discoveryService = {
   }> {
     const premium = await isUserPremium(userId);
     if (!premium) {
-      throw Forbidden('Super Like is a Premium feature');
+      throw Forbidden('El Super Like es una función Premium.');
     }
 
     const existing = await query<{ is_super: boolean }>(
@@ -382,7 +384,7 @@ export const discoveryService = {
     if (!alreadySuper) {
       const used = await countWeeklySuperLikes(userId);
       if (used >= SUPER_LIKE_WEEKLY_LIMIT) {
-        throw TooMany('You have used all your Super Likes this week');
+        throw TooMany('Has usado todos tus Super Likes esta semana.');
       }
     }
 
@@ -402,7 +404,7 @@ async function recordLike(
   isSuper: boolean,
   consumeSuperLikeQuota = false,
 ): Promise<{ matched: boolean; matchId?: string; isNewLike: boolean }> {
-    if (userId === targetId) throw BadRequest('Cannot like yourself');
+    if (userId === targetId) throw BadRequest('No puedes darte like a ti mismo.');
 
     // Block target if target blocked viewer.
     const blocked = await query(
@@ -412,7 +414,7 @@ async function recordLike(
        LIMIT 1`,
       [userId, targetId],
     );
-    if (blocked.rowCount) throw BadRequest('Cannot interact with this user');
+    if (blocked.rowCount) throw BadRequest('No puedes interactuar con este usuario.');
 
     return withTransaction(async (client) => {
       const existingLike = await client.query(

@@ -367,7 +367,7 @@ export const adminService = {
       [id],
     );
     const u = r.rows[0];
-    if (!u) throw NotFound('User not found');
+    if (!u) throw NotFound('No se ha encontrado el usuario.');
 
     const [
       photosR,

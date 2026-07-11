@@ -12,7 +12,7 @@ export class AppError extends Error {
   }
 }
 
-export const BadRequest = (msg = 'Bad request', details?: unknown) =>
+export const BadRequest = (msg = 'La solicitud no es válida.', details?: unknown) =>
   new AppError(400, 'BAD_REQUEST', msg, details);
 
 /**
@@ -22,20 +22,20 @@ export const BadRequest = (msg = 'Bad request', details?: unknown) =>
 export const ContentBlocked = (msg: string, category: string, field?: string) =>
   new AppError(400, 'CONTENT_BLOCKED', msg, { category, field });
 
-export const Unauthorized = (msg = 'Unauthorized') =>
+export const Unauthorized = (msg = 'No autorizado.') =>
   new AppError(401, 'UNAUTHORIZED', msg);
 
-export const Forbidden = (msg = 'Forbidden') =>
+export const Forbidden = (msg = 'Acción no permitida.') =>
   new AppError(403, 'FORBIDDEN', msg);
 
-export const NotFound = (msg = 'Not found') =>
+export const NotFound = (msg = 'No se ha encontrado el recurso.') =>
   new AppError(404, 'NOT_FOUND', msg);
 
-export const Conflict = (msg = 'Conflict') =>
+export const Conflict = (msg = 'Conflicto con el estado actual.') =>
   new AppError(409, 'CONFLICT', msg);
 
-export const TooMany = (msg = 'Too many requests') =>
+export const TooMany = (msg = 'Has hecho demasiadas peticiones. Inténtalo más tarde.') =>
   new AppError(429, 'TOO_MANY_REQUESTS', msg);
 
-export const ServerError = (msg = 'Internal server error') =>
+export const ServerError = (msg = 'Se ha producido un error interno en el servidor.') =>
   new AppError(500, 'SERVER_ERROR', msg);

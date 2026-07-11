@@ -139,6 +139,140 @@ export function welcomeVerificationEmail(vars: VerifyEmailVars): {
   };
 }
 
+/**
+ * Sent once, right after a user creates an account via "Continuar con Google".
+ * Google verifies the email address for us so no verification link is needed —
+ * this is a pure welcome / thank-you message.
+ */
+export function googleWelcomeEmail(vars: { firstName?: string | null }): {
+  subject: string;
+  html: string;
+  text: string;
+} {
+  const greetingEs = vars.firstName ? `¡Hola, ${escape(vars.firstName)}!` : '¡Hola!';
+  const inner = `
+    <h1 style="margin:0 0 12px 0;font-family:'Georgia',serif;font-size:24px;color:${BRAND.ink};">${greetingEs}</h1>
+    <p style="margin:0 0 14px 0;font-size:15px;line-height:22px;color:${BRAND.ink};">
+      ¡Bienvenido a <strong>Citas Mallorca</strong>! Tu cuenta se ha creado
+      correctamente al conectarte con Google. A partir de ahora podrás iniciar
+      sesión simplemente pulsando el botón <strong>«Continuar con Google»</strong>.
+    </p>
+    <p style="margin:0 0 14px 0;font-size:15px;line-height:22px;color:${BRAND.ink};">
+      Nos alegra tenerte aquí. Completa tu perfil, añade tus fotos y empieza a
+      descubrir gente con las mismas ganas de disfrutar de la isla.
+    </p>
+    <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:20px 0;">
+      <tr>
+        <td align="center">
+          <table cellpadding="0" cellspacing="0" border="0">
+            <tr>
+              <td align="center" bgcolor="${BRAND.coral}" style="border-radius:999px;">
+                <a href="https://www.citasmallorca.es" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:16px 36px;color:${BRAND.white};font-weight:700;text-decoration:none;font-size:16px;line-height:22px;border-radius:999px;min-width:240px;text-align:center;">
+                  Descubre Citas Mallorca
+                </a>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+    <p style="margin:18px 0 0 0;font-size:13px;color:${BRAND.inkSoft};">
+      ¿Preguntas? Escríbenos a
+      <a href="mailto:${OFFICIAL_EMAIL}" style="color:${BRAND.coral};text-decoration:none;">${OFFICIAL_EMAIL}</a>
+      y estaremos encantados de ayudarte.
+    </p>
+  `;
+  return {
+    subject: '¡Bienvenido a Citas Mallorca!',
+    html: shell(inner),
+    text:
+      `${greetingEs}\n\n` +
+      `¡Bienvenido a Citas Mallorca! Tu cuenta se ha creado correctamente al ` +
+      `conectarte con Google. A partir de ahora podrás iniciar sesión ` +
+      `simplemente pulsando el botón «Continuar con Google».\n\n` +
+      `Nos alegra tenerte aquí. Completa tu perfil, añade tus fotos y ` +
+      `empieza a descubrir gente con las mismas ganas de disfrutar de la ` +
+      `isla.\n\nwww.citasmallorca.es`,
+  };
+}
+
+/**
+ * Sent when a user successfully activates a Premium subscription (either
+ * monthly or annual). Content: short thank-you, restating that Premium is
+ * active — no call-to-action, this is a confirmation email.
+ */
+export function premiumWelcomeEmail(vars: {
+  firstName?: string | null;
+  plan?: 'monthly_premium' | 'annual_premium' | null;
+  expiryDate?: Date | null;
+}): {
+  subject: string;
+  html: string;
+  text: string;
+} {
+  const greetingEs = vars.firstName ? `¡Hola, ${escape(vars.firstName)}!` : '¡Hola!';
+  const planLabel =
+    vars.plan === 'annual_premium'
+      ? 'Premium Anual'
+      : vars.plan === 'monthly_premium'
+        ? 'Premium Mensual'
+        : 'Premium';
+  const expiryLine = vars.expiryDate
+    ? `<p style="margin:0 0 14px 0;font-size:14px;color:${BRAND.inkSoft};">Renovación / caducidad: <strong>${escape(
+        vars.expiryDate.toLocaleDateString('es-ES', {
+          day: '2-digit',
+          month: 'long',
+          year: 'numeric',
+        }),
+      )}</strong>.</p>`
+    : '';
+
+  const inner = `
+    <h1 style="margin:0 0 12px 0;font-family:'Georgia',serif;font-size:24px;color:${BRAND.ink};">${greetingEs}</h1>
+    <p style="margin:0 0 14px 0;font-size:15px;line-height:22px;color:${BRAND.ink};">
+      ¡Gracias por usar <strong>Citas Mallorca</strong>! Tu suscripción
+      <strong>${escape(planLabel)}</strong> se ha activado correctamente.
+      Esperamos que tengas una experiencia maravillosa y que crees una
+      conexión especial. Gracias por formar parte de nuestra comunidad.
+    </p>
+    <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:20px 0;">
+      <tr>
+        <td align="center" style="background:${BRAND.coralSoft};border-radius:16px;padding:20px 24px;border:1px solid ${BRAND.border};">
+          <p style="margin:0 0 6px 0;font-size:13px;color:${BRAND.inkSoft};letter-spacing:0.4px;">Tu plan</p>
+          <p style="margin:0;font-size:22px;font-weight:700;color:${BRAND.ink};">${escape(planLabel)}</p>
+        </td>
+      </tr>
+    </table>
+    ${expiryLine}
+    <p style="margin:0 0 12px 0;font-size:13px;color:${BRAND.inkSoft};">
+      Puedes gestionar o cancelar tu suscripción en cualquier momento desde tu
+      cuenta de Google Play.
+    </p>
+    <hr style="border:none;border-top:1px solid ${BRAND.border};margin:24px 0;" />
+    <p style="margin:0;font-size:12px;color:${BRAND.inkSoft};">
+      ¿Necesitas ayuda con tu suscripción? Escríbenos a
+      <a href="mailto:${OFFICIAL_EMAIL}" style="color:${BRAND.coral};text-decoration:none;">${OFFICIAL_EMAIL}</a>.
+    </p>
+  `;
+
+  return {
+    subject: '¡Tu Premium está activo! · Citas Mallorca',
+    html: shell(inner),
+    text:
+      `${greetingEs}\n\n` +
+      `¡Gracias por usar Citas Mallorca! Tu suscripción ${planLabel} se ha ` +
+      `activado correctamente. Esperamos que tengas una experiencia ` +
+      `maravillosa y que crees una conexión especial. Gracias por formar ` +
+      `parte de nuestra comunidad.\n\n` +
+      (vars.expiryDate
+        ? `Renovación / caducidad: ${vars.expiryDate.toLocaleDateString('es-ES')}\n\n`
+        : '') +
+      `Puedes gestionar o cancelar tu suscripción en cualquier momento desde ` +
+      `tu cuenta de Google Play.\n\n` +
+      `www.citasmallorca.es`,
+  };
+}
+
 export function passwordResetEmail(vars: { firstName?: string | null; code: string }): {
   subject: string;
   html: string;

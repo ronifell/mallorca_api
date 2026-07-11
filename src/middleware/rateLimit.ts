@@ -6,7 +6,12 @@ export const globalLimiter = rateLimit({
   max: env.rateLimit.max,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: { code: 'TOO_MANY_REQUESTS', message: 'Too many requests' } },
+  message: {
+    error: {
+      code: 'TOO_MANY_REQUESTS',
+      message: 'Has hecho demasiadas peticiones. Inténtalo más tarde.',
+    },
+  },
 });
 
 export const authLimiter = rateLimit({
@@ -14,5 +19,10 @@ export const authLimiter = rateLimit({
   max: 20,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: { code: 'TOO_MANY_REQUESTS', message: 'Too many auth attempts' } },
+  message: {
+    error: {
+      code: 'TOO_MANY_REQUESTS',
+      message: 'Demasiados intentos de inicio de sesión. Espera unos minutos e inténtalo de nuevo.',
+    },
+  },
 });

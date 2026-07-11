@@ -212,8 +212,8 @@ export const notificationsService = {
       [userAId, userBId].map(async (uid) => {
         if (!(await isPrefEnabled(uid, 'matches_enabled'))) return;
         await push(uid, {
-          title: '¡Nuevo match! / New match!',
-          body: 'Tienes un nuevo match. / You have a new match.',
+          title: '💘 ¡Nuevo match!',
+          body: '¡Tienes un nuevo match! Ábrelo y descubre con quién has conectado.',
           data: { type: 'new_match' },
         });
       }),
@@ -228,27 +228,22 @@ export const notificationsService = {
     );
     const name = r.rows[0]?.first_name?.trim() ?? '';
     await push(receiverId, {
-      title: '💖 New Like!',
+      title: '💖 ¡Nuevo Like!',
       body: name
-        ? `${name} te ha dado like. / ${name} liked you.`
-        : 'Alguien te ha dado like. / Someone liked you.',
+        ? `A ${name} le gustas. ¡Descubre su perfil!`
+        : '¡Le gustas a alguien! Descubre quién ha sido.',
       data: { type: 'new_like', fromUserId: senderId },
     });
   },
 
-  async notifySuperLike(receiverId: string, senderId: string) {
+  async notifySuperLike(receiverId: string, _senderId: string) {
     if (!(await isPrefEnabled(receiverId, 'matches_enabled'))) return;
-    const r = await query<{ first_name: string | null }>(
-      'SELECT first_name FROM users WHERE id = $1',
-      [senderId],
-    );
-    const name = r.rows[0]?.first_name?.trim() ?? '';
+    // Intentionally does NOT reveal the sender's name — the "check who sent
+    // it" hook drives the user back into the app.
     await push(receiverId, {
-      title: '⭐ Super Like!',
-      body: name
-        ? `${name} te ha enviado un Super Like. / ${name} sent you a Super Like.`
-        : 'Alguien te ha enviado un Super Like. / Someone sent you a Super Like.',
-      data: { type: 'super_like', fromUserId: senderId },
+      title: '⭐ ¡Eres una superestrella!',
+      body: 'Alguien te ha enviado una estrella esta semana. ¡Comprueba quién la ha enviado!',
+      data: { type: 'super_like', fromUserId: _senderId },
     });
   },
 
@@ -265,8 +260,7 @@ export const notificationsService = {
       });
       return;
     }
-    const body =
-      preview?.trim() || 'Tienes un nuevo mensaje. / You received a new message.';
+    const body = preview?.trim() || 'Tienes un nuevo mensaje.';
     logger.info('FCM push sending new_message', { receiverId, conversationId });
     await push(receiverId, {
       title: fromName || 'Nuevo mensaje',
@@ -281,7 +275,7 @@ export const notificationsService = {
   async notifySubscriptionExpiring(userId: string) {
     if (!(await isPrefEnabled(userId, 'subscription_enabled'))) return;
     await push(userId, {
-      title: 'Tu suscripción está por caducar / Your subscription is expiring',
+      title: 'Tu suscripción está a punto de caducar',
       body: 'Renueva tu Premium para seguir disfrutando de todas las funciones.',
       data: { type: 'subscription_expiring' },
     });

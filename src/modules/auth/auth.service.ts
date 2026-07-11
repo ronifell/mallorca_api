@@ -3,7 +3,11 @@ import { v4 as uuidv4 } from 'uuid';
 import { query, withTransaction } from '../../config/database';
 import { env } from '../../config/env';
 import { sendMail } from '../../services/mailer';
-import { passwordResetEmail, welcomeVerificationEmail } from '../../services/emailTemplates';
+import {
+  googleWelcomeEmail,
+  passwordResetEmail,
+  welcomeVerificationEmail,
+} from '../../services/emailTemplates';
 import { BadRequest, Conflict, Unauthorized } from '../../utils/errors';
 import {
   AccessTokenPayload,
@@ -89,14 +93,14 @@ function hasGoogleConsent(input: GoogleLoginInput): boolean {
 
 async function verifyGoogleIdToken(
   idToken: string,
-): Promise<{ sub: string; email: string; emailVerified: boolean }> {
+): Promise<{ sub: string; email: string; name: string | null; emailVerified: boolean }> {
   const audiences = [
     env.googleAuth.clientId,
     env.googleAuth.iosClientId,
     env.googleAuth.androidClientId,
   ].filter(Boolean);
   if (audiences.length === 0) {
-    throw BadRequest('Google sign-in is not configured on the server');
+    throw BadRequest('El inicio de sesión con Google no está configurado en el servidor.');
   }
 
   const { OAuth2Client } = await import('google-auth-library');
@@ -106,16 +110,22 @@ async function verifyGoogleIdToken(
     const ticket = await client.verifyIdToken({ idToken, audience: audiences });
     payload = ticket.getPayload();
   } catch {
-    throw Unauthorized('Invalid Google sign-in token');
+    throw Unauthorized('El token de Google no es válido.');
   }
 
   if (!payload?.sub || !payload.email) {
-    throw Unauthorized('Invalid Google sign-in token');
+    throw Unauthorized('El token de Google no es válido.');
   }
+
+  const rawName =
+    (typeof payload.given_name === 'string' && payload.given_name.trim()) ||
+    (typeof payload.name === 'string' && payload.name.split(' ')[0]?.trim()) ||
+    null;
 
   return {
     sub: payload.sub,
     email: payload.email.toLowerCase(),
+    name: rawName || null,
     emailVerified: payload.email_verified === true,
   };
 }
@@ -197,7 +207,7 @@ export const authService = {
   async register(input: RegisterInput): Promise<AuthResult> {
     if (!isStrongPassword(input.password)) {
       throw BadRequest(
-        'Password must be at least 8 characters with upper, lower and a digit',
+        'La contraseña debe tener al menos 8 caracteres, incluyendo una mayúscula, una minúscula y un número.',
       );
     }
 
@@ -206,7 +216,7 @@ export const authService = {
       [input.email.toLowerCase()],
     );
     if (existing.rowCount && existing.rowCount > 0) {
-      throw Conflict('Email is already registered');
+      throw Conflict('Este correo electrónico ya está registrado.');
     }
 
     const hash = await hashPassword(input.password);
@@ -277,14 +287,16 @@ export const authService = {
       [input.email.toLowerCase()],
     );
     const user = r.rows[0];
-    if (!user) throw Unauthorized('Invalid credentials');
-    if (user.status !== 'active') throw Unauthorized('Account is not active');
+    if (!user) throw Unauthorized('Correo o contraseña incorrectos.');
+    if (user.status !== 'active') throw Unauthorized('Esta cuenta no está activa.');
     if (!user.password_hash) {
-      throw Unauthorized('This account uses Google sign-in. Please continue with Google.');
+      throw Unauthorized(
+        'Esta cuenta está conectada a Google. Toca el botón «Continuar con Google» para acceder a ella.',
+      );
     }
 
     const ok = await verifyPassword(input.password, user.password_hash);
-    if (!ok) throw Unauthorized('Invalid credentials');
+    if (!ok) throw Unauthorized('Correo o contraseña incorrectos.');
 
     await query('UPDATE users SET last_active_at = NOW() WHERE id = $1', [user.id]);
 
@@ -327,12 +339,12 @@ export const authService = {
 
       if (existing) {
         if (existing.google_sub && existing.google_sub !== google.sub) {
-          throw Conflict('This email is linked to a different Google account.');
+          throw Conflict('Este correo está vinculado a otra cuenta de Google.');
         }
 
         if (existing.password_hash && !existing.google_sub && !google.emailVerified) {
           throw Unauthorized(
-            'Your Google email must be verified before linking to your existing account.',
+            'Tu correo de Google debe estar verificado antes de vincularlo a tu cuenta existente.',
           );
         }
 
@@ -351,7 +363,7 @@ export const authService = {
         user = existing;
       } else {
         if (!hasGoogleConsent(input)) {
-          throw BadRequest('You must accept the Terms and the Privacy Policy');
+          throw BadRequest('Debes aceptar los Términos y la Política de Privacidad.');
         }
 
         const role = isAdminEmail(google.email) ? 'admin' : 'user';
@@ -364,17 +376,18 @@ export const authService = {
             email_verified_at: Date | null;
           }>(
             `INSERT INTO users (
-                email, google_sub, role, language,
+                email, google_sub, role, language, first_name,
                 terms_accepted_at, privacy_accepted_at,
                 email_verified_at, last_active_at
              )
-             VALUES ($1, $2, $3, $4, NOW(), NOW(), $5, NOW())
+             VALUES ($1, $2, $3, $4, $5, NOW(), NOW(), $6, NOW())
              RETURNING id, email, is_premium, role, email_verified_at`,
             [
               google.email,
               google.sub,
               role,
-              input.language ?? 'en',
+              input.language ?? 'es',
+              google.name,
               google.emailVerified ? new Date() : null,
             ],
           );
@@ -386,6 +399,14 @@ export const authService = {
           );
           return u;
         });
+
+        // Fire-and-forget welcome email so a slow SMTP server doesn't block
+        // the sign-in response. Google verifies the address for us, so this
+        // is a pure welcome / thank-you rather than a verification email.
+        void sendMail({
+          to: inserted.email,
+          ...googleWelcomeEmail({ firstName: google.name }),
+        }).catch(() => undefined);
 
         return {
           ...(await issueTokens({
@@ -406,7 +427,7 @@ export const authService = {
       }
     }
 
-    if (user.status !== 'active') throw Unauthorized('Account is not active');
+    if (user.status !== 'active') throw Unauthorized('Esta cuenta no está activa.');
 
     await query('UPDATE users SET last_active_at = NOW() WHERE id = $1', [user.id]);
 
@@ -428,7 +449,7 @@ export const authService = {
     );
     const row = r.rows[0];
     if (!row || row.used_at || row.expires_at.getTime() < Date.now()) {
-      throw BadRequest('Invalid or expired verification token');
+      throw BadRequest('El enlace de verificación no es válido o ha caducado.');
     }
     await withTransaction(async (client) => {
       await client.query(
@@ -469,7 +490,7 @@ export const authService = {
     try {
       payload = verifyRefreshToken(input.refreshToken);
     } catch {
-      throw Unauthorized('Invalid or expired refresh token');
+      throw Unauthorized('Tu sesión ha caducado. Inicia sesión de nuevo.');
     }
 
     const r = await query<{ id: string; revoked_at: Date | null }>(
@@ -477,7 +498,7 @@ export const authService = {
       [payload.jti],
     );
     const stored = r.rows[0];
-    if (!stored || stored.revoked_at) throw Unauthorized('Refresh token revoked');
+    if (!stored || stored.revoked_at) throw Unauthorized('Tu sesión ha caducado. Inicia sesión de nuevo.');
 
     const userR = await query<{
       id: string;
@@ -489,7 +510,7 @@ export const authService = {
       [payload.sub],
     );
     const user = userR.rows[0];
-    if (!user) throw Unauthorized('User no longer exists');
+    if (!user) throw Unauthorized('Tu cuenta ya no existe.');
 
     // Rotate: revoke old, issue new
     await query('UPDATE refresh_tokens SET revoked_at = NOW() WHERE jti = $1', [
@@ -552,7 +573,9 @@ export const authService = {
 
   async resetPassword(input: ResetPasswordInput): Promise<void> {
     if (!isStrongPassword(input.password)) {
-      throw BadRequest('Password is not strong enough');
+      throw BadRequest(
+        'La contraseña no es lo bastante segura. Usa al menos 8 caracteres con mayúscula, minúscula y un número.',
+      );
     }
     const codeHash = crypto.createHash('sha256').update(input.code).digest('hex');
 
@@ -567,7 +590,7 @@ export const authService = {
     );
     const row = r.rows[0];
     if (!row || row.expires_at.getTime() < Date.now()) {
-      throw BadRequest('Invalid or expired code');
+      throw BadRequest('El código no es válido o ha caducado.');
     }
 
     const newHash = await hashPassword(input.password);

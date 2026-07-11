@@ -4,7 +4,7 @@ import { AppError } from '../utils/errors';
 import { logger } from '../utils/logger';
 
 export function notFoundHandler(_req: Request, res: Response) {
-  res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Route not found' } });
+  res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Ruta no encontrada.' } });
 }
 
 export function errorHandler(
@@ -14,11 +14,18 @@ export function errorHandler(
   _next: NextFunction,
 ) {
   if (err instanceof ZodError) {
+    // Surface the first field-specific message when possible so users see a
+    // friendly Spanish string instead of a generic "invalid payload".
+    const flat = err.flatten();
+    const firstFieldMessage =
+      Object.values(flat.fieldErrors).flat().find((m): m is string => typeof m === 'string' && m.length > 0) ??
+      flat.formErrors[0] ??
+      'La solicitud no es válida. Revisa los datos e inténtalo de nuevo.';
     res.status(400).json({
       error: {
         code: 'VALIDATION_ERROR',
-        message: 'Invalid request payload',
-        details: err.flatten(),
+        message: firstFieldMessage,
+        details: flat,
       },
     });
     return;
@@ -36,7 +43,7 @@ export function errorHandler(
     res.status(401).json({
       error: {
         code: 'UNAUTHORIZED',
-        message: 'Your session is no longer valid. Please sign out and sign in again.',
+        message: 'Tu sesión ya no es válida. Cierra sesión y vuelve a iniciarla.',
       },
     });
     return;
@@ -49,6 +56,6 @@ export function errorHandler(
   });
 
   res.status(500).json({
-    error: { code: 'SERVER_ERROR', message: 'Internal server error' },
+    error: { code: 'SERVER_ERROR', message: 'Se ha producido un error interno en el servidor.' },
   });
 }

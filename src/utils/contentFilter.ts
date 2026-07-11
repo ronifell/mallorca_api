@@ -396,13 +396,13 @@ export function inspectContent(raw: string, context: FilterContext = 'chat'): Fi
 }
 
 const CATEGORY_MESSAGES: Record<ContentCategory, string> = {
-  link: 'Links and website addresses are not allowed.',
-  phone: 'Sharing phone numbers is not allowed.',
-  social: 'Sharing social media accounts or external contact details is not allowed.',
-  spam: 'This message looks like spam.',
-  sexual: 'Sexual or explicit content is not allowed.',
-  aggressive: 'Aggressive, hateful or harassing language is not allowed.',
-  illegal: 'This content is not allowed.',
+  link: 'No se permiten enlaces ni direcciones web.',
+  phone: 'No se permite compartir números de teléfono.',
+  social: 'No se permite compartir redes sociales ni datos de contacto externos.',
+  spam: 'Este mensaje parece spam.',
+  sexual: 'No se permite contenido sexual o explícito.',
+  aggressive: 'No se permite el lenguaje agresivo, de odio o acoso.',
+  illegal: 'Este contenido no está permitido.',
 };
 
 export function categoryMessage(category: ContentCategory): string {

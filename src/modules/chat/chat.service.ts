@@ -41,7 +41,7 @@ async function loadConversation(conversationId: string): Promise<ConversationCon
 
 function assertParticipant(ctx: ConversationContext, userId: string) {
   if (!ctx.participants.includes(userId)) {
-    throw Forbidden('You are not a participant in this conversation');
+    throw Forbidden('No formas parte de esta conversación.');
   }
 }
 
@@ -52,9 +52,9 @@ export const chatService = {
       [matchId],
     );
     const m = r.rows[0];
-    if (!m) throw NotFound('Match not found');
+    if (!m) throw NotFound('No se ha encontrado el match.');
     if (m.user_a_id !== userId && m.user_b_id !== userId) {
-      throw Forbidden('Not a participant of this match');
+      throw Forbidden('No formas parte de este match.');
     }
     const c = await query<{ id: string }>(
       `INSERT INTO conversations (match_id) VALUES ($1)
@@ -88,7 +88,7 @@ export const chatService = {
     createdAt: string;
   }> {
     const ctx = await loadConversation(conversationId);
-    if (!ctx) throw NotFound('Conversation not found');
+    if (!ctx) throw NotFound('No se ha encontrado la conversación.');
     assertParticipant(ctx, senderId);
 
     // Block inappropriate text before it is persisted or broadcast.
@@ -103,7 +103,7 @@ export const chatService = {
     if (ctx.messageCount === 0) {
       const premium = await isUserPremium(senderId);
       if (!premium) {
-        throw Forbidden('Only Premium users can initiate conversations');
+        throw Forbidden('Solo los usuarios Premium pueden iniciar conversaciones.');
       }
     }
 
@@ -160,10 +160,10 @@ export const chatService = {
     publicOrigin?: string,
   ) {
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(mime)) {
-      throw BadRequest('Unsupported image type. Use JPG, PNG, or WEBP');
+      throw BadRequest('Formato de imagen no compatible. Usa JPG, PNG o WEBP.');
     }
     const ctx = await loadConversation(conversationId);
-    if (!ctx) throw NotFound('Conversation not found');
+    if (!ctx) throw NotFound('No se ha encontrado la conversación.');
     assertParticipant(ctx, senderId);
 
     const stored = await uploadImage(buffer, mime, `chat/${conversationId}`, publicOrigin);
@@ -188,10 +188,10 @@ export const chatService = {
       'audio/webm',
     ];
     if (!accepted.includes(mime.toLowerCase())) {
-      throw BadRequest('Unsupported audio type. Use M4A, AAC, MP3, OGG or WAV');
+      throw BadRequest('Formato de audio no compatible. Usa M4A, AAC, MP3, OGG o WAV.');
     }
     const ctx = await loadConversation(conversationId);
-    if (!ctx) throw NotFound('Conversation not found');
+    if (!ctx) throw NotFound('No se ha encontrado la conversación.');
     assertParticipant(ctx, senderId);
 
     const stored = await uploadAudio(buffer, mime, `chat/${conversationId}/audio`, publicOrigin);
@@ -204,7 +204,7 @@ export const chatService = {
     opts: { before?: string; limit: number },
   ) {
     const ctx = await loadConversation(conversationId);
-    if (!ctx) throw NotFound('Conversation not found');
+    if (!ctx) throw NotFound('No se ha encontrado la conversación.');
     assertParticipant(ctx, userId);
 
     const params: unknown[] = [conversationId];
@@ -254,7 +254,7 @@ export const chatService = {
 
   async markRead(userId: string, conversationId: string) {
     const ctx = await loadConversation(conversationId);
-    if (!ctx) throw NotFound('Conversation not found');
+    if (!ctx) throw NotFound('No se ha encontrado la conversación.');
     assertParticipant(ctx, userId);
 
     await query(

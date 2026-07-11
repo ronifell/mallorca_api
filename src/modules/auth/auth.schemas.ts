@@ -7,24 +7,21 @@ export const registerSchema = z.object({
   // two separate checkboxes — both required.
   acceptedTerms: z
     .literal(true, {
-      errorMap: () => ({ message: 'You must accept the Terms and Conditions' }),
+      errorMap: () => ({ message: 'Debes aceptar los Términos y Condiciones.' }),
     })
     .optional(),
   acceptedPrivacy: z
     .literal(true, {
-      errorMap: () => ({ message: 'You must accept the Privacy Policy' }),
+      errorMap: () => ({ message: 'Debes aceptar la Política de Privacidad.' }),
     })
     .optional(),
   language: z.enum(['en', 'es']).optional(),
 }).refine(
   (v) =>
-    // At least one of the legacy / new flags must be true. The two-checkbox
-    // contract requires both new fields; legacy clients must keep sending
-    // `acceptedTerms`.
     (v.acceptedTerms === true && v.acceptedPrivacy === true) ||
     (v.acceptedTerms === true && v.acceptedPrivacy === undefined),
   {
-    message: 'You must accept the Terms and the Privacy Policy',
+    message: 'Debes aceptar los Términos y la Política de Privacidad.',
     path: ['acceptedPrivacy'],
   },
 );
@@ -44,7 +41,7 @@ export const forgotPasswordSchema = z.object({
 
 export const resetPasswordSchema = z.object({
   email: z.string().email().max(254),
-  code: z.string().regex(/^\d{6}$/, 'Code must be 6 digits'),
+  code: z.string().regex(/^\d{6}$/, 'El código debe tener 6 dígitos.'),
   password: z.string().min(8).max(128),
 });
 
