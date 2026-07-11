@@ -144,7 +144,7 @@ export const usersService = {
       [userId],
     );
     const u = r.rows[0];
-    if (!u) throw NotFound('User not found');
+    if (!u) throw NotFound('No se ha encontrado el usuario.');
 
     const [photos, languages, interestSelections, relationshipGoals] = await Promise.all([
       loadPhotos(userId),
@@ -182,7 +182,7 @@ export const usersService = {
 
   async updateProfile(userId: string, input: UpdateProfileInput): Promise<MyProfile> {
     if (input.birthDate && !isAdult(input.birthDate)) {
-      throw BadRequest(`You must be at least ${MIN_AGE} years old`);
+      throw BadRequest(`Debes tener al menos ${MIN_AGE} años.`);
     }
 
     // Free-text profile fields are public, so they get the stricter "profile"
@@ -246,7 +246,7 @@ export const usersService = {
         }
 
         if (!interested) {
-          throw BadRequest('"interestSelections" must be provided for the first time');
+          throw BadRequest('Debes indicar en quién estás interesado la primera vez.');
         }
 
         const minAge = input.minAge ?? existing.rows[0]?.min_age ?? 18;
@@ -328,7 +328,7 @@ export const usersService = {
     publicOrigin?: string,
   ): Promise<{ id: string; url: string; orderIndex: number }> {
     if (!['image/jpeg', 'image/png', 'image/webp'].includes(mime)) {
-      throw BadRequest('Unsupported image type. Use JPG, PNG, or WEBP');
+      throw BadRequest('Formato de imagen no compatible. Usa JPG, PNG o WEBP.');
     }
     const countR = await query<{ count: string }>(
       'SELECT COUNT(*) AS count FROM photos WHERE user_id = $1',
@@ -336,7 +336,7 @@ export const usersService = {
     );
     const count = Number(countR.rows[0]?.count ?? 0);
     if (count >= MAX_PHOTOS) {
-      throw Conflict(`You already have the maximum of ${MAX_PHOTOS} photos`);
+      throw Conflict(`Ya tienes el máximo de ${MAX_PHOTOS} fotos.`);
     }
 
     const stored = await uploadImage(buffer, mime, `photos/${userId}`, publicOrigin);
@@ -354,7 +354,7 @@ export const usersService = {
       photoId,
       userId,
     ]);
-    if (!r.rowCount) throw NotFound('Photo not found');
+    if (!r.rowCount) throw NotFound('No se ha encontrado la foto.');
 
     // Re-index remaining photos so order_index stays contiguous.
     await query(
@@ -374,10 +374,10 @@ export const usersService = {
     );
     const existing = new Set(r.rows.map((x) => x.id));
     for (const id of ids) {
-      if (!existing.has(id)) throw BadRequest('Photo id not owned by user: ' + id);
+      if (!existing.has(id)) throw BadRequest('La foto no pertenece a este usuario: ' + id);
     }
     if (ids.length !== existing.size) {
-      throw BadRequest('Must include every photo id when reordering');
+      throw BadRequest('Debes incluir todas las fotos al reordenarlas.');
     }
 
     await withTransaction(async (client) => {

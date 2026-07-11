@@ -13,6 +13,8 @@
 import type { androidpublisher_v3 } from 'googleapis';
 import { query, withTransaction } from '../../config/database';
 import { env } from '../../config/env';
+import { premiumWelcomeEmail } from '../../services/emailTemplates';
+import { sendMail } from '../../services/mailer';
 import { BadRequest, Unauthorized } from '../../utils/errors';
 import { logger } from '../../utils/logger';
 
@@ -71,7 +73,7 @@ function parseServiceAccountCredentials(): Record<string, unknown> {
   const raw = env.googlePlay.serviceAccountJson;
   if (!raw) {
     throw BadRequest(
-      'Google Play billing is not configured on the server. Please contact support.',
+      'La facturación de Google Play no está configurada en el servidor. Contacta con soporte.',
     );
   }
   let parsed: unknown;
@@ -80,18 +82,18 @@ function parseServiceAccountCredentials(): Record<string, unknown> {
   } catch {
     logger.error('GOOGLE_SERVICE_ACCOUNT_JSON is not valid JSON');
     throw BadRequest(
-      'Google Play billing credentials are misconfigured on the server. Please contact support.',
+      'Las credenciales de facturación de Google Play están mal configuradas en el servidor. Contacta con soporte.',
     );
   }
   if (!parsed || typeof parsed !== 'object') {
     throw BadRequest(
-      'Google Play billing credentials are misconfigured on the server. Please contact support.',
+      'Las credenciales de facturación de Google Play están mal configuradas en el servidor. Contacta con soporte.',
     );
   }
   const creds = parsed as Record<string, unknown>;
   if (typeof creds.client_email !== 'string' || typeof creds.private_key !== 'string') {
     throw BadRequest(
-      'Google Play billing credentials are incomplete on the server. Please contact support.',
+      'Las credenciales de facturación de Google Play están incompletas en el servidor. Contacta con soporte.',
     );
   }
   return creds;
@@ -119,7 +121,7 @@ async function validateWithGooglePlay(
     if (!env.billing.allowMock) {
       logger.warn('Refused mock purchase (BILLING_ALLOW_MOCK is not enabled)');
       throw BadRequest(
-        'Premium purchases must be validated through Google Play. Please complete the in-app purchase flow.',
+        'Las compras Premium deben validarse a través de Google Play. Completa el proceso de compra dentro de la app.',
       );
     }
     logger.warn('GOOGLE_SERVICE_ACCOUNT_JSON not configured; granting MOCK subscription (dev only)');
@@ -149,28 +151,25 @@ async function validateWithGooglePlay(
     const e = err as { code?: number; message?: string };
     // 404 → token unknown (probably a fake or already-refunded token).
     if (e?.code === 404 || e?.code === 410) {
-      throw BadRequest('Google Play does not recognise this purchase token.');
+      throw BadRequest('Google Play no reconoce este token de compra.');
     }
     logger.error('Google Play validation failed', {
       productId,
       code: e?.code,
       message: e?.message,
     });
-    throw BadRequest('Google Play validation failed. Please try again.');
+    throw BadRequest('La validación con Google Play ha fallado. Inténtalo de nuevo.');
   }
 
   const startMs = Number(data.startTimeMillis ?? Date.now());
   const expiryMs = Number(data.expiryTimeMillis ?? 0);
   if (!expiryMs) {
-    throw BadRequest('Google Play returned a subscription with no expiry.');
+    throw BadRequest('Google Play ha devuelto una suscripción sin fecha de caducidad.');
   }
 
   const now = Date.now();
   if (expiryMs < now) {
-    // Expired at time of validation — refuse rather than grant a past-dated
-    // subscription. Client will typically not send expired tokens; this
-    // guards against replay of a very old token.
-    throw BadRequest('This subscription has already expired.');
+    throw BadRequest('Esta suscripción ya ha caducado.');
   }
 
   // paymentState = undefined → cancelled / no active payment.
@@ -178,7 +177,7 @@ async function validateWithGooglePlay(
   // paymentState = 1|2|3    → payment ok (received / trial / deferred change)
   const paymentState = data.paymentState ?? undefined;
   if (paymentState === undefined) {
-    throw BadRequest('This subscription is no longer active.');
+    throw BadRequest('Esta suscripción ya no está activa.');
   }
 
   const pending = paymentState === 0;
@@ -230,7 +229,7 @@ async function validateWithAppStore(
   // Placeholder for future App Store Server Notifications / receipt validation.
   if (!env.billing.allowMock) {
     throw BadRequest(
-      'App Store validation is not yet available. Please use Google Play to subscribe.',
+      'La validación con App Store aún no está disponible. Usa Google Play para suscribirte.',
     );
   }
   logger.warn('App Store validation not yet implemented; granting MOCK subscription (dev only)');
@@ -252,13 +251,22 @@ export const subscriptionsService = {
     userId: string,
     input: { platform: 'google_play' | 'app_store'; productId: string; purchaseToken: string },
   ): Promise<{ isPremium: boolean; expiryDate: string; status: string; productId: string }> {
-    const userRow = await query<{ id: string }>('SELECT id FROM users WHERE id = $1', [userId]);
-    if (!userRow.rows[0]) {
-      throw Unauthorized('Your session is no longer valid. Please sign out and sign in again.');
+    const userRow = await query<{
+      id: string;
+      email: string;
+      first_name: string | null;
+      is_premium: boolean;
+    }>(
+      'SELECT id, email, first_name, is_premium FROM users WHERE id = $1',
+      [userId],
+    );
+    const userBefore = userRow.rows[0];
+    if (!userBefore) {
+      throw Unauthorized('Tu sesión ya no es válida. Cierra sesión y vuelve a iniciarla.');
     }
 
     if (!PRODUCT_DURATION_DAYS[input.productId]) {
-      throw BadRequest(`Unknown product id: ${input.productId}`);
+      throw BadRequest(`Producto desconocido: ${input.productId}`);
     }
 
     const validated =
@@ -269,15 +277,23 @@ export const subscriptionsService = {
     // Pending payments should not grant premium yet — Google will send a
     // Real-Time Developer Notification when the payment clears (or fails).
     if (validated.pending) {
-      throw BadRequest('Your payment is pending. Premium will be activated once Google confirms it.');
+      throw BadRequest(
+        'Tu pago está pendiente. Activaremos Premium en cuanto Google lo confirme.',
+      );
     }
 
     // If the subscription is cancelled but still has time remaining, we still
     // grant premium until expiry. Only future renewals will fail.
     const isPremium = validated.expiryDate.getTime() > Date.now();
 
+    // Track whether we're inserting a fresh subscription row for this
+    // (platform, purchase_token) pair. Only that case should trigger a
+    // welcome email — retries of validateAndActivate with the same token
+    // (e.g. after a network hiccup) must not re-send the email.
+    let isFreshSubscription = false;
+
     await withTransaction(async (client) => {
-      await client.query(
+      const insert = await client.query<{ inserted: boolean }>(
         `INSERT INTO subscriptions
             (user_id, platform, product_id, purchase_token, start_date, expiry_date, status, raw_payload)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
@@ -287,7 +303,8 @@ export const subscriptionsService = {
            expiry_date = EXCLUDED.expiry_date,
            status      = EXCLUDED.status,
            raw_payload = EXCLUDED.raw_payload,
-           updated_at  = NOW()`,
+           updated_at  = NOW()
+         RETURNING (xmax = 0) AS inserted`,
         [
           userId,
           input.platform,
@@ -299,6 +316,7 @@ export const subscriptionsService = {
           JSON.stringify(validated.raw ?? {}),
         ],
       );
+      isFreshSubscription = insert.rows[0]?.inserted === true;
 
       if (isPremium) {
         await client.query(
@@ -307,6 +325,25 @@ export const subscriptionsService = {
         );
       }
     });
+
+    // Only send the confirmation email on the very first activation of this
+    // subscription (new row). This keeps the mail idempotent across retries
+    // and skips renewals (which come through the RTDN webhook, not here).
+    if (isPremium && isFreshSubscription) {
+      void sendMail({
+        to: userBefore.email,
+        ...premiumWelcomeEmail({
+          firstName: userBefore.first_name,
+          plan: input.productId as 'monthly_premium' | 'annual_premium',
+          expiryDate: validated.expiryDate,
+        }),
+      }).catch((err) => {
+        logger.warn('Premium welcome email failed to send', {
+          userId,
+          err: err instanceof Error ? err.message : String(err),
+        });
+      });
+    }
 
     return {
       isPremium,

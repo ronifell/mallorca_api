@@ -14,7 +14,7 @@ declare global {
 export function requireAuth(req: Request, _res: Response, next: NextFunction) {
   const header = req.headers.authorization;
   if (!header || !header.startsWith('Bearer ')) {
-    throw Unauthorized('Missing or malformed Authorization header');
+    throw Unauthorized('Falta la cabecera de autorización o tiene un formato incorrecto.');
   }
   const token = header.slice('Bearer '.length).trim();
   try {
@@ -22,18 +22,18 @@ export function requireAuth(req: Request, _res: Response, next: NextFunction) {
     req.user = payload;
     next();
   } catch {
-    throw Unauthorized('Invalid or expired access token');
+    throw Unauthorized('Tu sesión ha caducado. Inicia sesión de nuevo.');
   }
 }
 
 export function requireAdmin(req: Request, _res: Response, next: NextFunction) {
   if (!req.user) throw Unauthorized();
-  if (req.user.role !== 'admin') throw Forbidden('Admin access required');
+  if (req.user.role !== 'admin') throw Forbidden('Se requieren permisos de administrador.');
   next();
 }
 
 export function requirePremium(req: Request, _res: Response, next: NextFunction) {
   if (!req.user) throw Unauthorized();
-  if (!req.user.premium) throw Forbidden('Premium subscription required');
+  if (!req.user.premium) throw Forbidden('Se necesita una suscripción Premium.');
   next();
 }

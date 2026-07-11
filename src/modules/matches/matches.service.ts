@@ -194,7 +194,7 @@ export const matchesService = {
     );
 
     const row = r.rows[0];
-    if (!row) throw NotFound('Match not found');
+    if (!row) throw NotFound('No se ha encontrado el match.');
 
     const [photos, languages, goals] = await Promise.all([
       query<{ id: string; image_url: string; storage_key: string | null; order_index: number }>(

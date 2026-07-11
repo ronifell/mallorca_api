@@ -55,7 +55,7 @@ export const adminController = {
 
   async hardDelete(req: Request, res: Response) {
     const { id } = uuidParam.parse(req.params);
-    if (req.user?.sub === id) throw BadRequest('You cannot delete your own admin account');
+    if (req.user?.sub === id) throw BadRequest('No puedes eliminar tu propia cuenta de administrador.');
     await adminService.hardDelete(id);
     res.status(204).send();
   },

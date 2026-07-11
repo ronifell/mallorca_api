@@ -4,7 +4,7 @@ import { BadRequest, ContentBlocked } from '../../utils/errors';
 
 export const moderationService = {
   async block(userId: string, targetId: string): Promise<void> {
-    if (userId === targetId) throw BadRequest('Cannot block yourself');
+    if (userId === targetId) throw BadRequest('No puedes bloquearte a ti mismo.');
     await withTransaction(async (client) => {
       await client.query(
         `INSERT INTO blocks (blocker_id, blocked_user_id) VALUES ($1, $2)
@@ -62,7 +62,7 @@ export const moderationService = {
     targetId: string,
     payload: { reason: string; details?: string },
   ): Promise<void> {
-    if (userId === targetId) throw BadRequest('Cannot report yourself');
+    if (userId === targetId) throw BadRequest('No puedes reportarte a ti mismo.');
     if (payload.details?.trim()) {
       const verdict = inspectContent(payload.details, 'chat');
       if (verdict.blocked && verdict.category) {
