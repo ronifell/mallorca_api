@@ -24,7 +24,7 @@ export const discoveryController = {
     if (result.matched && result.matchId) {
       // Await socket emit so the other user is notified before this HTTP
       // response finishes; push notification stays fire-and-forget.
-      void notificationsService.notifyNewMatch(senderId, targetId);
+      void notificationsService.notifyNewMatch(senderId, targetId, result.matchId);
       await emitMatchEvents(senderId, targetId, result.matchId);
     } else if (result.isNewLike) {
       void notificationsService.notifyNewLike(targetId, senderId);
@@ -38,7 +38,7 @@ export const discoveryController = {
     const { id: targetId } = likeParamsSchema.parse(req.params);
     const result = await discoveryService.superLike(senderId, targetId);
     if (result.matched && result.matchId) {
-      void notificationsService.notifyNewMatch(senderId, targetId);
+      void notificationsService.notifyNewMatch(senderId, targetId, result.matchId);
       await emitMatchEvents(senderId, targetId, result.matchId);
     } else if (result.isNewSuperLike) {
       void notificationsService.notifySuperLike(targetId, senderId);

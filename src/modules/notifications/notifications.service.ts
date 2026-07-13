@@ -205,16 +205,38 @@ async function push(
   }
 }
 
+async function firstNameOf(userId: string): Promise<string> {
+  const r = await query<{ first_name: string | null }>(
+    'SELECT first_name FROM users WHERE id = $1',
+    [userId],
+  );
+  return r.rows[0]?.first_name?.trim() ?? '';
+}
+
 export const notificationsService = {
-  async notifyNewMatch(userAId: string, userBId: string) {
-    // Send to both directions.
+  async notifyNewMatch(userAId: string, userBId: string, matchId?: string) {
+    // Fetch both display names once so each push can include the OTHER
+    // user's name in the title / body (e.g. "¡Enhorabuena! Has hecho un
+    // match con Ana").
+    const [nameA, nameB] = await Promise.all([firstNameOf(userAId), firstNameOf(userBId)]);
+
+    const targets: { uid: string; otherName: string }[] = [
+      { uid: userAId, otherName: nameB },
+      { uid: userBId, otherName: nameA },
+    ];
+
     await Promise.all(
-      [userAId, userBId].map(async (uid) => {
+      targets.map(async ({ uid, otherName }) => {
         if (!(await isPrefEnabled(uid, 'matches_enabled'))) return;
         await push(uid, {
-          title: '💘 ¡Nuevo match!',
-          body: '¡Tienes un nuevo match! Ábrelo y descubre con quién has conectado.',
-          data: { type: 'new_match' },
+          title: '🎉 ¡Enhorabuena!',
+          body: otherName
+            ? `¡Has hecho un match con ${otherName}! Empieza la conversación.`
+            : '¡Has hecho un nuevo match! Ábrelo y descubre con quién has conectado.',
+          data: {
+            type: 'new_match',
+            ...(matchId ? { matchId } : {}),
+          },
         });
       }),
     );
@@ -222,28 +244,24 @@ export const notificationsService = {
 
   async notifyNewLike(receiverId: string, senderId: string) {
     if (!(await isPrefEnabled(receiverId, 'matches_enabled'))) return;
-    const r = await query<{ first_name: string | null }>(
-      'SELECT first_name FROM users WHERE id = $1',
-      [senderId],
-    );
-    const name = r.rows[0]?.first_name?.trim() ?? '';
+    const name = await firstNameOf(senderId);
     await push(receiverId, {
       title: '💖 ¡Nuevo Like!',
       body: name
         ? `A ${name} le gustas. ¡Descubre su perfil!`
-        : '¡Le gustas a alguien! Descubre quién ha sido.',
+        : '¡Alguien te ha dado like! Descubre quién ha sido.',
       data: { type: 'new_like', fromUserId: senderId },
     });
   },
 
-  async notifySuperLike(receiverId: string, _senderId: string) {
+  async notifySuperLike(receiverId: string, senderId: string) {
     if (!(await isPrefEnabled(receiverId, 'matches_enabled'))) return;
     // Intentionally does NOT reveal the sender's name — the "check who sent
     // it" hook drives the user back into the app.
     await push(receiverId, {
       title: '⭐ ¡Eres una superestrella!',
-      body: 'Alguien te ha enviado una estrella esta semana. ¡Comprueba quién la ha enviado!',
-      data: { type: 'super_like', fromUserId: _senderId },
+      body: 'Alguien te ha enviado su estrella semanal. ¡Descubre quién!',
+      data: { type: 'super_like', fromUserId: senderId },
     });
   },
 

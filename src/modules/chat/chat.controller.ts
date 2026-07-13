@@ -22,9 +22,9 @@ function messagePreview(msg: {
   text: string | null;
 }): string {
   if (msg.type === 'text' && msg.text?.trim()) return msg.text.trim();
-  if (msg.type === 'image') return 'Sent a photo / Foto enviada';
-  if (msg.type === 'audio') return 'Voice message / Mensaje de voz';
-  return 'Tienes un nuevo mensaje. / You received a new message.';
+  if (msg.type === 'image') return '📷 Te ha enviado una foto';
+  if (msg.type === 'audio') return '🎤 Te ha enviado un mensaje de voz';
+  return 'Tienes un nuevo mensaje.';
 }
 
 export const chatController = {
