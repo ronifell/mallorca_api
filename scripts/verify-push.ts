@@ -139,7 +139,7 @@ async function main() {
     if (!results.find((r) => r.step === 'FCM API send (dry run)')?.ok) {
       console.log('- Fix Firebase service account credentials or enable Firebase Cloud Messaging API');
     }
-    console.log('- Ensure the server your app calls (54.94.85.115) has the same FIREBASE_* vars if testing on device');
+    console.log('- Ensure the server your app calls (100.48.93.44) has the same FIREBASE_* vars if testing on device');
   }
 
   await pool.end();
