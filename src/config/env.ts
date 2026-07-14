@@ -96,13 +96,13 @@ export const env = {
      */
     clientId:
       process.env.GOOGLE_CLIENT_ID ??
-      '921193281866-mm69ppb6imu07eggjrua33affmpu2h18.apps.googleusercontent.com',
+      '528899539521-sk200iq6bf4pa3rga03bnr03sqo8k6be.apps.googleusercontent.com',
     /** Optional iOS client ID (additional allowed audience for verifyIdToken). */
     iosClientId: process.env.GOOGLE_IOS_CLIENT_ID ?? '',
     /** Android client ID — accepted as an audience for robustness. */
     androidClientId:
       process.env.GOOGLE_ANDROID_CLIENT_ID ??
-      '921193281866-9kve17c76jc3m095r77fda16pr9sjhsj.apps.googleusercontent.com',
+      '528899539521-uqicjas911s0c6a1oqsom665bksdd594.apps.googleusercontent.com',
   },
 
   billing: {
