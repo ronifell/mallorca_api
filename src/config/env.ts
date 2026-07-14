@@ -112,7 +112,9 @@ export const env = {
      * **only** in dev/staging when you want to exercise the gating without
      * real purchases.
      */
-    allowMock: process.env.BILLING_ALLOW_MOCK === 'true',
+    allowMock: ['true', '1', 'yes'].includes(
+      (process.env.BILLING_ALLOW_MOCK ?? '').trim().toLowerCase(),
+    ),
   },
 
   publicWeb: {
