@@ -197,10 +197,16 @@ async function push(
       logger.info('FCM push delivered', { userId, type, successCount, tokenCount: tokens.length });
     }
   } catch (e) {
+    const err = e as { code?: string; message?: string } | undefined;
     logger.error('FCM send failed', {
       userId,
       type,
-      err: e instanceof Error ? e.message : String(e),
+      code: err?.code ?? null,
+      err: err?.message ?? String(e),
+      hint:
+        err?.code === 'app/invalid-credential'
+          ? 'Firebase service account key is invalid/revoked. Regenerate at Firebase Console → Project Settings → Service accounts → Generate new private key, then update FIREBASE_CLIENT_EMAIL and FIREBASE_PRIVATE_KEY in .env.'
+          : undefined,
     });
   }
 }
