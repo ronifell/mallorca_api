@@ -266,7 +266,7 @@ export const notificationsService = {
     // it" hook drives the user back into the app.
     await push(receiverId, {
       title: '⭐ ¡Eres una superestrella!',
-      body: 'Alguien te ha enviado su estrella semanal. ¡Descubre quién!',
+      body: 'Alguien te envió un Super Like esta semana. ¡Comprueba quién lo envió!',
       data: { type: 'super_like', fromUserId: senderId },
     });
   },
