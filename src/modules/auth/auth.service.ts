@@ -97,7 +97,7 @@ async function verifyGoogleIdToken(
   const audiences = [
     env.googleAuth.clientId,
     env.googleAuth.iosClientId,
-    env.googleAuth.androidClientId,
+    ...env.googleAuth.androidClientIds,
   ].filter(Boolean);
   if (audiences.length === 0) {
     throw BadRequest('El inicio de sesión con Google no está configurado en el servidor.');
