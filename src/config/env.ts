@@ -99,10 +99,22 @@ export const env = {
       '528899539521-sk200iq6bf4pa3rga03bnr03sqo8k6be.apps.googleusercontent.com',
     /** Optional iOS client ID (additional allowed audience for verifyIdToken). */
     iosClientId: process.env.GOOGLE_IOS_CLIENT_ID ?? '',
-    /** Android client ID — accepted as an audience for robustness. */
-    androidClientId:
+    /**
+     * Android OAuth client IDs (comma-separated). Accepted as additional audiences
+     * when Google returns an Android-client-scoped ID token. Include both the EAS
+     * upload-key client and the Play App Signing client when they differ.
+     */
+    androidClientIds: (
+      process.env.GOOGLE_ANDROID_CLIENT_IDS ??
       process.env.GOOGLE_ANDROID_CLIENT_ID ??
-      '528899539521-uqicjas911s0c6a1oqsom665bksdd594.apps.googleusercontent.com',
+      [
+        '528899539521-uqicjas911s0c6a1oqsom665bksdd594.apps.googleusercontent.com',
+        '528899539521-0rm1ctk4vaucdeg52n41ifhrr3gcnfbo.apps.googleusercontent.com',
+      ].join(',')
+    )
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean),
   },
 
   billing: {
