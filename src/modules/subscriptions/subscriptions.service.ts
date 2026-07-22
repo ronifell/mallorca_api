@@ -139,17 +139,33 @@ async function validateWithGooglePlay(
   }
 
   const androidpublisher = await getAndroidPublisher();
-  let data: PlaySubscriptionPurchase;
+
+  // Prefer the legacy subscriptions.get API (works with classic product IDs).
+  // Fall back to subscriptionsv2 for Play Billing base-plan / offer products.
   try {
     const res = await androidpublisher.purchases.subscriptions.get({
       packageName: env.googlePlay.packageName,
       subscriptionId: productId,
       token: purchaseToken,
     });
-    data = res.data;
+    return mapLegacyPlayPurchase(productId, purchaseToken, res.data, androidpublisher);
   } catch (err: unknown) {
     const e = err as { code?: number; message?: string };
-    // 404 → token unknown (probably a fake or already-refunded token).
+    logger.warn('Legacy Google Play validation failed — trying subscriptionsv2', {
+      productId,
+      code: e?.code,
+      message: e?.message,
+    });
+  }
+
+  try {
+    const res = await androidpublisher.purchases.subscriptionsv2.get({
+      packageName: env.googlePlay.packageName,
+      token: purchaseToken,
+    });
+    return mapSubscriptionV2Purchase(productId, purchaseToken, res.data, androidpublisher);
+  } catch (err: unknown) {
+    const e = err as { code?: number; message?: string };
     if (e?.code === 404 || e?.code === 410) {
       throw BadRequest('Google Play no reconoce este token de compra.');
     }
@@ -160,7 +176,37 @@ async function validateWithGooglePlay(
     });
     throw BadRequest('La validación con Google Play ha fallado. Inténtalo de nuevo.');
   }
+}
 
+async function acknowledgeLegacySubscription(
+  androidpublisher: androidpublisher_v3.Androidpublisher,
+  productId: string,
+  purchaseToken: string,
+): Promise<void> {
+  try {
+    await androidpublisher.purchases.subscriptions.acknowledge({
+      packageName: env.googlePlay.packageName,
+      subscriptionId: productId,
+      token: purchaseToken,
+      requestBody: {},
+    });
+    logger.info('Google Play subscription acknowledged', { productId });
+  } catch (err: unknown) {
+    const e = err as { code?: number; message?: string };
+    logger.warn('Google Play acknowledge failed (non-fatal)', {
+      productId,
+      code: e?.code,
+      message: e?.message,
+    });
+  }
+}
+
+async function mapLegacyPlayPurchase(
+  productId: string,
+  purchaseToken: string,
+  data: PlaySubscriptionPurchase,
+  androidpublisher: androidpublisher_v3.Androidpublisher,
+): Promise<ValidatedPurchase> {
   const startMs = Number(data.startTimeMillis ?? Date.now());
   const expiryMs = Number(data.expiryTimeMillis ?? 0);
   if (!expiryMs) {
@@ -181,41 +227,85 @@ async function validateWithGooglePlay(
   }
 
   const pending = paymentState === 0;
-  let status: DbSubscriptionStatus = 'active';
-  // A cancelReason means the user (or Google) has cancelled the subscription
-  // — but they still have access until expiry.
+  let status: DbSubscriptionStatus = pending ? 'grace' : 'active';
   if (data.cancelReason !== undefined && data.cancelReason !== null) {
     status = 'cancelled';
   }
 
-  // Acknowledge within 3 days or Google auto-refunds. We do this here rather
-  // than only from the client so a crash mid-flow can't cost the user their
-  // money. Idempotent — safe to call on already-acknowledged tokens.
   if (data.acknowledgementState === 0 && !pending) {
-    try {
-      await androidpublisher.purchases.subscriptions.acknowledge({
-        packageName: env.googlePlay.packageName,
-        subscriptionId: productId,
-        token: purchaseToken,
-        requestBody: {},
-      });
-      logger.info('Google Play subscription acknowledged', { productId });
-    } catch (err: unknown) {
-      // Non-fatal: the client may still acknowledge, and Google returns 400
-      // on already-acknowledged tokens. Log and continue.
-      const e = err as { code?: number; message?: string };
-      logger.warn('Google Play acknowledge failed (non-fatal)', {
-        productId,
-        code: e?.code,
-        message: e?.message,
-      });
-    }
+    await acknowledgeLegacySubscription(androidpublisher, productId, purchaseToken);
   }
 
   return {
     startDate: new Date(startMs),
     expiryDate: new Date(expiryMs),
     autoRenewing: !!data.autoRenewing,
+    status,
+    pending,
+    raw: data,
+  };
+}
+
+async function mapSubscriptionV2Purchase(
+  productId: string,
+  purchaseToken: string,
+  data: {
+    startTime?: string | null;
+    subscriptionState?: string | null;
+    acknowledgementState?: string | null;
+    lineItems?: Array<{
+      productId?: string | null;
+      expiryTime?: string | null;
+      autoRenewingPlan?: unknown;
+    }> | null;
+  },
+  androidpublisher: androidpublisher_v3.Androidpublisher,
+): Promise<ValidatedPurchase> {
+  const line =
+    data.lineItems?.find((item) => item.productId === productId) ?? data.lineItems?.[0];
+  const expiryMs = line?.expiryTime ? Date.parse(line.expiryTime) : 0;
+  const startMs = data.startTime ? Date.parse(data.startTime) : Date.now();
+
+  if (!expiryMs) {
+    throw BadRequest('Google Play ha devuelto una suscripción sin fecha de caducidad.');
+  }
+  if (expiryMs < Date.now()) {
+    throw BadRequest('Esta suscripción ya ha caducado.');
+  }
+
+  const state = data.subscriptionState ?? '';
+  if (
+    state === 'SUBSCRIPTION_STATE_EXPIRED' ||
+    state === 'SUBSCRIPTION_STATE_REVOKED'
+  ) {
+    throw BadRequest('Esta suscripción ya no está activa.');
+  }
+
+  const pending =
+    state === 'SUBSCRIPTION_STATE_PENDING' ||
+    state === 'SUBSCRIPTION_STATE_PENDING_PURCHASE_CANCELED';
+
+  let status: DbSubscriptionStatus = pending ? 'grace' : 'active';
+  if (state === 'SUBSCRIPTION_STATE_CANCELED') {
+    status = 'cancelled';
+  } else if (
+    state === 'SUBSCRIPTION_STATE_IN_GRACE_PERIOD' ||
+    state === 'SUBSCRIPTION_STATE_ON_HOLD'
+  ) {
+    status = 'grace';
+  }
+
+  // subscriptionsv2 acknowledge uses the same legacy acknowledge endpoint with
+  // the product/base-plan id Google associates with the token.
+  const ackProductId = line?.productId || productId;
+  if (data.acknowledgementState === 'ACKNOWLEDGEMENT_STATE_PENDING' && !pending) {
+    await acknowledgeLegacySubscription(androidpublisher, ackProductId, purchaseToken);
+  }
+
+  return {
+    startDate: new Date(startMs || Date.now()),
+    expiryDate: new Date(expiryMs),
+    autoRenewing: Boolean(line?.autoRenewingPlan),
     status,
     pending,
     raw: data,
@@ -274,17 +364,11 @@ export const subscriptionsService = {
         ? await validateWithGooglePlay(input.productId, input.purchaseToken)
         : await validateWithAppStore(input.productId, input.purchaseToken);
 
-    // Pending payments should not grant premium yet — Google will send a
-    // Real-Time Developer Notification when the payment clears (or fails).
-    if (validated.pending) {
-      throw BadRequest(
-        'Tu pago está pendiente. Activaremos Premium en cuanto Google lo confirme.',
-      );
-    }
-
-    // If the subscription is cancelled but still has time remaining, we still
-    // grant premium until expiry. Only future renewals will fail.
-    const isPremium = validated.expiryDate.getTime() > Date.now();
+    // Persist even when payment is still pending (bank hold / 3DS clearing).
+    // That way RTDN can activate Premium later when Google confirms payment.
+    // Do NOT grant premium while pending.
+    const isPremium =
+      !validated.pending && validated.expiryDate.getTime() > Date.now();
 
     // Track whether we're inserting a fresh subscription row for this
     // (platform, purchase_token) pair. Only that case should trigger a
@@ -300,6 +384,7 @@ export const subscriptionsService = {
          ON CONFLICT (platform, purchase_token)
          DO UPDATE SET
            user_id     = EXCLUDED.user_id,
+           product_id  = EXCLUDED.product_id,
            expiry_date = EXCLUDED.expiry_date,
            status      = EXCLUDED.status,
            raw_payload = EXCLUDED.raw_payload,
@@ -312,7 +397,7 @@ export const subscriptionsService = {
           input.purchaseToken,
           validated.startDate,
           validated.expiryDate,
-          validated.status,
+          validated.pending ? 'grace' : validated.status,
           JSON.stringify(validated.raw ?? {}),
         ],
       );
@@ -325,6 +410,19 @@ export const subscriptionsService = {
         );
       }
     });
+
+    if (validated.pending) {
+      logger.info('Purchase recorded as pending — waiting for Google confirmation', {
+        userId,
+        productId: input.productId,
+      });
+      return {
+        isPremium: false,
+        expiryDate: validated.expiryDate.toISOString(),
+        status: 'pending',
+        productId: input.productId,
+      };
+    }
 
     // Only send the confirmation email on the very first activation of this
     // subscription (new row). This keeps the mail idempotent across retries
@@ -437,6 +535,9 @@ export const subscriptionsService = {
     const hasCancelReason = data.cancelReason !== undefined && data.cancelReason !== null;
     if (data.paymentState === undefined || data.paymentState === null) {
       status = 'cancelled';
+    } else if (data.paymentState === 0) {
+      // Bank / 3DS still clearing — keep row so a later RTDN can activate Premium.
+      status = 'grace';
     } else if (hasCancelReason) {
       // Still has time on the clock → grace; otherwise cancelled outright.
       status = expiryMs > Date.now() ? 'grace' : 'cancelled';
@@ -458,7 +559,10 @@ export const subscriptionsService = {
       if (upd.rowCount === 0) {
         // We don't know this token yet — likely a first-time renewal received
         // out of order. Nothing to reconcile until the client validates.
-        logger.info('RTDN sync: unknown purchase token — skipping', { productId });
+        logger.info('RTDN sync: unknown purchase token — skipping', {
+          productId,
+          paymentState: data.paymentState,
+        });
         return;
       }
       const userId = upd.rows[0].user_id;
@@ -471,6 +575,20 @@ export const subscriptionsService = {
           WHERE id = $1`,
         [userId, isActive, expiryDate],
       );
+
+      // Acknowledge once payment is confirmed so Google does not auto-refund.
+      if (isActive && data.acknowledgementState === 0) {
+        try {
+          await androidpublisher.purchases.subscriptions.acknowledge({
+            packageName: env.googlePlay.packageName,
+            subscriptionId: productId,
+            token: purchaseToken,
+            requestBody: {},
+          });
+        } catch {
+          // Non-fatal — client restore / next validate may acknowledge.
+        }
+      }
     });
   },
 };

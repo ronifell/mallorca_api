@@ -43,6 +43,12 @@ function buildAppVerifyDeepLink(rawToken: string): string {
   return `${env.app.deepLinkScheme}://verify-email?token=${encodeURIComponent(rawToken)}`;
 }
 
+/** HTTPS bridge that redirects into the app (same pattern as email verification). */
+function buildOpenAppUrl(): string {
+  const base = env.apiBaseUrl.replace(/\/$/, '');
+  return `${base}/api/auth/open-app`;
+}
+
 async function issueVerificationToken(userId: string): Promise<string> {
   const raw = crypto.randomBytes(32).toString('hex');
   const tokenHash = crypto.createHash('sha256').update(raw).digest('hex');
@@ -405,7 +411,10 @@ export const authService = {
         // is a pure welcome / thank-you rather than a verification email.
         void sendMail({
           to: inserted.email,
-          ...googleWelcomeEmail({ firstName: google.name }),
+          ...googleWelcomeEmail({
+            firstName: google.name,
+            openAppUrl: buildOpenAppUrl(),
+          }),
         }).catch(() => undefined);
 
         return {

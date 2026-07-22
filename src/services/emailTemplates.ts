@@ -143,13 +143,20 @@ export function welcomeVerificationEmail(vars: VerifyEmailVars): {
  * Sent once, right after a user creates an account via "Continuar con Google".
  * Google verifies the email address for us so no verification link is needed —
  * this is a pure welcome / thank-you message.
+ *
+ * `openAppUrl` must be an HTTPS bridge (same pattern as email verification)
+ * that redirects into the app deep link — email clients often block custom schemes.
  */
-export function googleWelcomeEmail(vars: { firstName?: string | null }): {
+export function googleWelcomeEmail(vars: {
+  firstName?: string | null;
+  openAppUrl: string;
+}): {
   subject: string;
   html: string;
   text: string;
 } {
   const greetingEs = vars.firstName ? `¡Hola, ${escape(vars.firstName)}!` : '¡Hola!';
+  const openAppUrl = escape(vars.openAppUrl);
   const inner = `
     <h1 style="margin:0 0 12px 0;font-family:'Georgia',serif;font-size:24px;color:${BRAND.ink};">${greetingEs}</h1>
     <p style="margin:0 0 14px 0;font-size:15px;line-height:22px;color:${BRAND.ink};">
@@ -167,8 +174,8 @@ export function googleWelcomeEmail(vars: { firstName?: string | null }): {
           <table cellpadding="0" cellspacing="0" border="0">
             <tr>
               <td align="center" bgcolor="${BRAND.coral}" style="border-radius:999px;">
-                <a href="https://www.citasmallorca.es" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:16px 36px;color:${BRAND.white};font-weight:700;text-decoration:none;font-size:16px;line-height:22px;border-radius:999px;min-width:240px;text-align:center;">
-                  Descubre Citas Mallorca
+                <a href="${openAppUrl}" target="_blank" rel="noopener noreferrer" style="display:inline-block;padding:16px 36px;color:${BRAND.white};font-weight:700;text-decoration:none;font-size:16px;line-height:22px;border-radius:999px;min-width:240px;text-align:center;">
+                  Abrir la app
                 </a>
               </td>
             </tr>
@@ -192,7 +199,7 @@ export function googleWelcomeEmail(vars: { firstName?: string | null }): {
       `simplemente pulsando el botón «Continuar con Google».\n\n` +
       `Nos alegra tenerte aquí. Completa tu perfil, añade tus fotos y ` +
       `empieza a descubrir gente con las mismas ganas de disfrutar de la ` +
-      `isla.\n\nwww.citasmallorca.es`,
+      `isla.\n\nAbre la app: ${vars.openAppUrl}`,
   };
 }
 
