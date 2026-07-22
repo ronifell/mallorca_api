@@ -14,6 +14,7 @@ router.post('/forgot-password', authLimiter, asyncHandler(authController.forgotP
 router.post('/reset-password', authLimiter, asyncHandler(authController.resetPassword));
 router.get('/verify-email', asyncHandler(authController.verifyEmail));
 router.post('/verify-email', asyncHandler(authController.verifyEmail));
+router.get('/open-app', asyncHandler(authController.openApp));
 router.post('/resend-verification', authLimiter, asyncHandler(authController.resendVerification));
 
 export default router;

@@ -20,13 +20,19 @@ function buildAndroidEmailVerifiedIntent(): string {
   return `intent://email-verified#Intent;scheme=${env.app.deepLinkScheme};package=es.citasmallorca.app;end`;
 }
 
-function buildVerifiedPageHtml(deepLink: string): string {
+function buildOpenAppPageHtml(
+  deepLink: string,
+  opts?: { title?: string; heading?: string; message?: string },
+): string {
   const safeLink = deepLink.replace(/"/g, '&quot;');
   const androidIntent = buildAndroidEmailVerifiedIntent().replace(/"/g, '&quot;');
+  const title = opts?.title ?? 'Cuenta verificada · Citas Mallorca';
+  const heading = opts?.heading ?? '¡Cuenta verificada!';
+  const message = opts?.message ?? 'Abriendo la app para continuar con tu perfil…';
   return `<!doctype html>
 <html lang="es"><head><meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Cuenta verificada · Citas Mallorca</title>
+<title>${title}</title>
 <style>
   body { margin:0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background:#F2EBE0; color:#3D2618; }
   .wrap { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
@@ -53,12 +59,15 @@ function buildVerifiedPageHtml(deepLink: string): string {
 <body><div class="wrap"><div class="card">
   <div class="logo">Citas <span>Mallorca</span></div>
   <div class="ok">✓</div>
-  <h1>¡Cuenta verificada!</h1>
-  <p>Abriendo la app para continuar con tu perfil…</p>
-  <p class="hint">Opening the app so you can continue setting up your profile…</p>
-  <a class="btn" href="${safeLink}">Abrir la app · Open app</a>
+  <h1>${heading}</h1>
+  <p>${message}</p>
+  <a class="btn" href="${safeLink}">Abrir la app</a>
   <p class="hint"><a href="${androidIntent}" style="color:#E8554E;text-decoration:none;">Android: abrir app</a></p>
 </div></div></body></html>`;
+}
+
+function buildVerifiedPageHtml(deepLink: string): string {
+  return buildOpenAppPageHtml(deepLink);
 }
 
 function buildInvalidTokenPageHtml(): string {
@@ -155,5 +164,20 @@ export const authController = {
     const data = resendVerificationSchema.parse(req.body);
     await authService.resendVerification(data);
     res.status(204).send();
+  },
+
+  /**
+   * GET /auth/open-app
+   * HTTPS bridge used by the Google welcome email (and similar CTAs) so the
+   * button opens the installed app the same way email verification does.
+   */
+  async openApp(_req: Request, res: Response) {
+    res.type('html').send(
+      buildOpenAppPageHtml(buildEmailVerifiedDeepLink(), {
+        title: 'Bienvenido · Citas Mallorca',
+        heading: '¡Bienvenido a Citas Mallorca!',
+        message: 'Abriendo la app para continuar…',
+      }),
+    );
   },
 };
