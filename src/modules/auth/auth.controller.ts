@@ -209,14 +209,10 @@ export const authController = {
     if (accepts.includes('application/json')) {
       res.json({ verified: true, deepLink: buildEmailVerifiedDeepLink() });
     } else {
-      res.type('html').send(
-        buildOpenAppPageHtml(buildEmailVerifiedDeepLink(), {
-          title: 'Cuenta verificada · Citas Mallorca',
-          heading: '¡Cuenta verificada!',
-          message: 'Tu cuenta está confirmada. Abriendo Citas Mallorca…',
-          androidIntent: buildAndroidOpenAppIntent('email-verified'),
-        }),
-      );
+      // Prefer the marketing HTTPS open-app URL so Android App Links can open
+      // the app without staying on this API page. Fall back to local HTML bridge.
+      const webOpen = `${env.publicWeb.url.replace(/\/$/, '')}/open-app.html`;
+      res.redirect(302, webOpen);
     }
   },
 
@@ -228,17 +224,11 @@ export const authController = {
 
   /**
    * GET /auth/open-app
-   * HTTPS landing page for welcome emails. Email clients only allow https
-   * links reliably; this page then launches the installed Android app.
+   * API-side fallback that redirects to the marketing open-app page
+   * (Android App Links host). Kept so old emails pointing here still work.
    */
   async openApp(_req: Request, res: Response) {
-    res.type('html').send(
-      buildOpenAppPageHtml(buildEmailVerifiedDeepLink(), {
-        title: 'Bienvenido · Citas Mallorca',
-        heading: '¡Bienvenido a Citas Mallorca!',
-        message: 'Abriendo la app para continuar…',
-        androidIntent: buildAndroidOpenAppIntent('email-verified'),
-      }),
-    );
+    const webOpen = `${env.publicWeb.url.replace(/\/$/, '')}/open-app.html`;
+    res.redirect(302, webOpen);
   },
 };

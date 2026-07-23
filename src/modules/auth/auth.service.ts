@@ -44,12 +44,13 @@ function buildAppVerifyDeepLink(rawToken: string): string {
 }
 
 /**
- * HTTPS landing page for welcome emails. Gmail and most clients only allow
- * https:// links in buttons; this page then launches the installed app.
+ * HTTPS open-app URL on the public marketing domain.
+ * Email clients only allow https:// buttons; with Android App Links this
+ * opens the installed app. Falls back to open-app.html Intent launcher.
  */
 function buildOpenAppUrl(): string {
-  const base = env.apiBaseUrl.replace(/\/$/, '');
-  return `${base}/api/auth/open-app`;
+  const web = env.publicWeb.url.replace(/\/$/, '');
+  return `${web}/open-app.html`;
 }
 
 async function issueVerificationToken(userId: string): Promise<string> {
