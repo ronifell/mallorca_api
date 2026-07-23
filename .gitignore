@@ -11,3 +11,8 @@ logs/
 *.swo
 .idea/
 .vscode/
+# Google Play / cloud service-account keys — never commit
+play-service-account.json
+**/service-account*.json
+citas-mallorca-*.json
+

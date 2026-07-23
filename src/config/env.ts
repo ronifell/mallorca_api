@@ -34,6 +34,41 @@ function normalizePrivateKey(raw: string): string {
   return key.replace(/\\n/g, '\n');
 }
 
+/**
+ * Resolve Google Play service-account credentials.
+ * Prefer inline GOOGLE_SERVICE_ACCOUNT_JSON; otherwise load from
+ * GOOGLE_SERVICE_ACCOUNT_JSON_PATH (absolute or relative to Backend/).
+ */
+function resolveGooglePlayServiceAccountJson(): string {
+  const inline = (process.env.GOOGLE_SERVICE_ACCOUNT_JSON ?? '').trim();
+  if (inline) return inline;
+
+  const filePathRaw = (process.env.GOOGLE_SERVICE_ACCOUNT_JSON_PATH ?? '').trim();
+  if (!filePathRaw) return '';
+
+  const resolved = path.isAbsolute(filePathRaw)
+    ? filePathRaw
+    : path.join(backendRoot, filePathRaw);
+
+  if (!fs.existsSync(resolved)) {
+    console.warn(
+      `[env] GOOGLE_SERVICE_ACCOUNT_JSON_PATH not found: ${resolved}`,
+    );
+    return '';
+  }
+
+  try {
+    return fs.readFileSync(resolved, 'utf8').trim();
+  } catch (err) {
+    console.warn(
+      `[env] Failed to read GOOGLE_SERVICE_ACCOUNT_JSON_PATH: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    );
+    return '';
+  }
+}
+
 export const env = {
   nodeEnv: process.env.NODE_ENV ?? 'development',
   port: Number(process.env.PORT ?? 4000),
@@ -78,7 +113,7 @@ export const env = {
 
   googlePlay: {
     packageName: (process.env.GOOGLE_PLAY_PACKAGE_NAME ?? '').trim(),
-    serviceAccountJson: (process.env.GOOGLE_SERVICE_ACCOUNT_JSON ?? '').trim(),
+    serviceAccountJson: resolveGooglePlayServiceAccountJson(),
     /**
      * Shared secret appended as `?token=...` to the Pub/Sub push
      * subscription URL. Rotate whenever the URL is rotated.
