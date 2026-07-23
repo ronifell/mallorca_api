@@ -43,7 +43,11 @@ function buildAppVerifyDeepLink(rawToken: string): string {
   return `${env.app.deepLinkScheme}://verify-email?token=${encodeURIComponent(rawToken)}`;
 }
 
-/** HTTPS bridge that redirects into the app (same pattern as email verification). */
+function buildAppOpenDeepLink(): string {
+  return `${env.app.deepLinkScheme}://email-verified`;
+}
+
+/** HTTPS bridge kept only as a fallback for email clients that block custom schemes. */
 function buildOpenAppUrl(): string {
   const base = env.apiBaseUrl.replace(/\/$/, '');
   return `${base}/api/auth/open-app`;
@@ -413,7 +417,8 @@ export const authService = {
           to: inserted.email,
           ...googleWelcomeEmail({
             firstName: google.name,
-            openAppUrl: buildOpenAppUrl(),
+            appOpenUrl: buildAppOpenDeepLink(),
+            httpsFallbackUrl: buildOpenAppUrl(),
           }),
         }).catch(() => undefined);
 
