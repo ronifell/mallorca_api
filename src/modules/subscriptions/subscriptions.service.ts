@@ -119,9 +119,19 @@ async function validateWithGooglePlay(
 ): Promise<ValidatedPurchase> {
   if (!env.googlePlay.serviceAccountJson || !env.googlePlay.packageName) {
     if (!env.billing.allowMock) {
-      logger.warn('Refused mock purchase (BILLING_ALLOW_MOCK is not enabled)');
+      // The user has been charged by Google Play but this server has no
+      // service-account credentials to validate the token. Log loudly so ops
+      // can spot the missing env vars in production.
+      logger.error(
+        'CANNOT VALIDATE PURCHASE — GOOGLE_SERVICE_ACCOUNT_JSON / GOOGLE_PLAY_PACKAGE_NAME missing in server env. User was charged but Premium cannot be activated until credentials are configured.',
+        {
+          productId,
+          hasServiceAccount: Boolean(env.googlePlay.serviceAccountJson),
+          hasPackageName: Boolean(env.googlePlay.packageName),
+        },
+      );
       throw BadRequest(
-        'Las compras Premium deben validarse a través de Google Play. Completa el proceso de compra dentro de la app.',
+        'Estamos verificando tu pago con Google Play. Vuelve a la pantalla Premium y pulsa «Restaurar compras» en unos minutos para activar tu suscripción. Si el problema persiste, contáctanos.',
       );
     }
     logger.warn('GOOGLE_SERVICE_ACCOUNT_JSON not configured; granting MOCK subscription (dev only)');
