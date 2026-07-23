@@ -43,11 +43,10 @@ function buildAppVerifyDeepLink(rawToken: string): string {
   return `${env.app.deepLinkScheme}://verify-email?token=${encodeURIComponent(rawToken)}`;
 }
 
-function buildAppOpenDeepLink(): string {
-  return `${env.app.deepLinkScheme}://email-verified`;
-}
-
-/** HTTPS bridge kept only as a fallback for email clients that block custom schemes. */
+/**
+ * HTTPS landing page for welcome emails. Gmail and most clients only allow
+ * https:// links in buttons; this page then launches the installed app.
+ */
 function buildOpenAppUrl(): string {
   const base = env.apiBaseUrl.replace(/\/$/, '');
   return `${base}/api/auth/open-app`;
@@ -417,8 +416,7 @@ export const authService = {
           to: inserted.email,
           ...googleWelcomeEmail({
             firstName: google.name,
-            appOpenUrl: buildAppOpenDeepLink(),
-            httpsFallbackUrl: buildOpenAppUrl(),
+            openAppUrl: buildOpenAppUrl(),
           }),
         }).catch(() => undefined);
 

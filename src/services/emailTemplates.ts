@@ -23,9 +23,9 @@ const BRAND = {
 
 interface VerifyEmailVars {
   firstName?: string | null;
-  /** HTTPS fallback (verifies on server then can redirect). */
+  /** HTTPS CTA — required; email clients block custom schemes. */
   verifyUrl: string;
-  /** App deep link — primary CTA so the button opens the app directly. */
+  /** Custom-scheme deep link kept for text clients / future use. */
   appVerifyUrl: string;
 }
 
@@ -87,16 +87,15 @@ export function welcomeVerificationEmail(vars: VerifyEmailVars): {
 } {
   const greetingEs = vars.firstName ? `¡Hola, ${escape(vars.firstName)}!` : '¡Hola!';
   const greetingEn = vars.firstName ? `Hi ${escape(vars.firstName)}!` : 'Hello!';
-  // Primary CTA: open the installed app (deep link). The app verifies the token.
-  const appUrl = escape(vars.appVerifyUrl);
-  // Fallback for clients that block custom schemes.
-  const webUrl = escape(vars.verifyUrl);
+  // Email clients (Gmail, etc.) block custom schemes like citasmallorca://.
+  // The button MUST be HTTPS; that page then launches the installed app.
+  const ctaUrl = escape(vars.verifyUrl);
 
   const inner = `
     <h1 style="margin:0 0 12px 0;font-family:'Georgia',serif;font-size:24px;color:${BRAND.ink};">${greetingEs}</h1>
     <p style="margin:0 0 14px 0;font-size:15px;line-height:22px;color:${BRAND.ink};">
       Bienvenido a la comunidad de <strong>Citas Mallorca</strong>. Nos alegra
-      tenerte aquí. Pulsa el botón para confirmar tu perfil y abrir la app.
+      tenerte aquí. Pulsa el botón para confirmar tu cuenta y abrir la app.
     </p>
     <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:20px 0;">
       <tr>
@@ -104,7 +103,7 @@ export function welcomeVerificationEmail(vars: VerifyEmailVars): {
           <table cellpadding="0" cellspacing="0" border="0">
             <tr>
               <td align="center" bgcolor="${BRAND.coral}" style="border-radius:999px;">
-                <a href="${appUrl}" style="display:inline-block;padding:16px 36px;color:${BRAND.white};font-weight:700;text-decoration:none;font-size:16px;line-height:22px;border-radius:999px;min-width:240px;text-align:center;mso-padding-alt:16px 36px;">
+                <a href="${ctaUrl}" style="display:inline-block;padding:16px 36px;color:${BRAND.white};font-weight:700;text-decoration:none;font-size:16px;line-height:22px;border-radius:999px;min-width:240px;text-align:center;mso-padding-alt:16px 36px;">
                   Abrir la app
                 </a>
               </td>
@@ -114,14 +113,14 @@ export function welcomeVerificationEmail(vars: VerifyEmailVars): {
       </tr>
     </table>
     <p style="margin:0 0 10px 0;font-size:13px;color:${BRAND.inkSoft};">
-      Si el botón no abre la app, usa este enlace alternativo:<br />
-      <a href="${webUrl}" style="color:${BRAND.coral};word-break:break-all;">${webUrl}</a>
+      Si el botón no funciona, copia y pega este enlace en el navegador del teléfono:<br />
+      <a href="${ctaUrl}" style="color:${BRAND.coral};word-break:break-all;">${ctaUrl}</a>
     </p>
     <hr style="border:none;border-top:1px solid ${BRAND.border};margin:24px 0;" />
     <h2 style="margin:0 0 8px 0;font-size:16px;color:${BRAND.ink};">${greetingEn}</h2>
     <p style="margin:0 0 12px 0;font-size:14px;line-height:21px;color:${BRAND.ink};">
       Welcome to the <strong>Citas Mallorca</strong> community. We're glad to
-      have you here. Tap the button above to confirm your profile and open the app.
+      have you here. Tap the button above to confirm your account and open the app.
     </p>
     <p style="margin:18px 0 0 0;font-size:12px;color:${BRAND.inkSoft};">
       Si no has creado esta cuenta puedes ignorar este mensaje. /
@@ -134,9 +133,8 @@ export function welcomeVerificationEmail(vars: VerifyEmailVars): {
     html: shell(inner),
     text:
       `${greetingEs}\n\nBienvenido a la comunidad de Citas Mallorca. ` +
-      `Nos alegra tenerte aquí. Abre la app para confirmar tu perfil:\n\n` +
-      `${vars.appVerifyUrl}\n\n` +
-      `Si no se abre, usa este enlace:\n${vars.verifyUrl}\n\n` +
+      `Pulsa este enlace en tu teléfono para confirmar tu cuenta y abrir la app:\n\n` +
+      `${vars.verifyUrl}\n\n` +
       `${greetingEn}\nWelcome to the Citas Mallorca community.`,
   };
 }
@@ -146,23 +144,19 @@ export function welcomeVerificationEmail(vars: VerifyEmailVars): {
  * Google verifies the email address for us so no verification link is needed —
  * this is a pure welcome / thank-you message.
  *
- * `appOpenUrl` is a custom-scheme deep link (citasmallorca://…) so the button
- * opens the installed app directly — same approach as the email/password CTA.
- * `httpsFallbackUrl` is only shown as a secondary link for clients that block
- * custom schemes.
+ * `openAppUrl` MUST be an HTTPS URL. Email clients block citasmallorca:// links;
+ * the HTTPS page launches the installed Android app via Intent.
  */
 export function googleWelcomeEmail(vars: {
   firstName?: string | null;
-  appOpenUrl: string;
-  httpsFallbackUrl?: string;
+  openAppUrl: string;
 }): {
   subject: string;
   html: string;
   text: string;
 } {
   const greetingEs = vars.firstName ? `¡Hola, ${escape(vars.firstName)}!` : '¡Hola!';
-  const appUrl = escape(vars.appOpenUrl);
-  const fallback = vars.httpsFallbackUrl ? escape(vars.httpsFallbackUrl) : '';
+  const ctaUrl = escape(vars.openAppUrl);
   const inner = `
     <h1 style="margin:0 0 12px 0;font-family:'Georgia',serif;font-size:24px;color:${BRAND.ink};">${greetingEs}</h1>
     <p style="margin:0 0 14px 0;font-size:15px;line-height:22px;color:${BRAND.ink};">
@@ -180,7 +174,7 @@ export function googleWelcomeEmail(vars: {
           <table cellpadding="0" cellspacing="0" border="0">
             <tr>
               <td align="center" bgcolor="${BRAND.coral}" style="border-radius:999px;">
-                <a href="${appUrl}" style="display:inline-block;padding:16px 36px;color:${BRAND.white};font-weight:700;text-decoration:none;font-size:16px;line-height:22px;border-radius:999px;min-width:240px;text-align:center;">
+                <a href="${ctaUrl}" style="display:inline-block;padding:16px 36px;color:${BRAND.white};font-weight:700;text-decoration:none;font-size:16px;line-height:22px;border-radius:999px;min-width:240px;text-align:center;">
                   Abrir la app
                 </a>
               </td>
@@ -189,14 +183,10 @@ export function googleWelcomeEmail(vars: {
         </td>
       </tr>
     </table>
-    ${
-      fallback
-        ? `<p style="margin:0 0 10px 0;font-size:13px;color:${BRAND.inkSoft};">
-      Si el botón no abre la app, usa este enlace alternativo:<br />
-      <a href="${fallback}" style="color:${BRAND.coral};word-break:break-all;">${fallback}</a>
-    </p>`
-        : ''
-    }
+    <p style="margin:0 0 10px 0;font-size:13px;color:${BRAND.inkSoft};">
+      Si el botón no funciona, copia y pega este enlace en el navegador del teléfono:<br />
+      <a href="${ctaUrl}" style="color:${BRAND.coral};word-break:break-all;">${ctaUrl}</a>
+    </p>
     <p style="margin:18px 0 0 0;font-size:13px;color:${BRAND.inkSoft};">
       ¿Preguntas? Escríbenos a
       <a href="mailto:${OFFICIAL_EMAIL}" style="color:${BRAND.coral};text-decoration:none;">${OFFICIAL_EMAIL}</a>
@@ -210,8 +200,7 @@ export function googleWelcomeEmail(vars: {
       `${greetingEs}\n\n` +
       `¡Bienvenido a Citas Mallorca! Tu cuenta se ha creado correctamente al ` +
       `conectarte con Google.\n\n` +
-      `Abre la app: ${vars.appOpenUrl}` +
-      (vars.httpsFallbackUrl ? `\n\nEnlace alternativo: ${vars.httpsFallbackUrl}` : ''),
+      `Abre la app desde tu teléfono:\n${vars.openAppUrl}`,
   };
 }
 
