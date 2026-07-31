@@ -35,8 +35,7 @@ function generatePasswordResetCode(): string {
 }
 
 function buildVerifyUrl(rawToken: string): string {
-  const base = env.apiBaseUrl.replace(/\/$/, '');
-  return `${base}/api/auth/verify-email?token=${encodeURIComponent(rawToken)}`;
+  return `${env.publicApiUrl}/api/auth/verify-email?token=${encodeURIComponent(rawToken)}`;
 }
 
 function buildAppVerifyDeepLink(rawToken: string): string {

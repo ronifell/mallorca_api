@@ -66,6 +66,11 @@ export const usersController = {
     res.status(204).send();
   },
 
+  async deleteFcm(req: Request, res: Response) {
+    await usersService.clearFcmToken(userId(req));
+    res.status(204).send();
+  },
+
   async updateNotificationSettings(req: Request, res: Response) {
     const data = updateNotificationSettingsSchema.parse(req.body);
     await usersService.updateNotificationSettings(userId(req), data);

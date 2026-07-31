@@ -137,6 +137,11 @@ export const discoveryService = {
   async getFeed(userId: string, limit: number): Promise<FeedCandidate[]> {
     const viewer = await loadViewer(userId);
     const viewerAge = calculateAge(viewer.birthDate);
+    const viewerGoalsR = await query<{ goal: RelationshipGoal }>(
+      `SELECT goal FROM user_relationship_goals WHERE user_id = $1`,
+      [userId],
+    );
+    const viewerGoals = viewerGoalsR.rows.map((g) => g.goal);
 
     const acceptedGenders = acceptedGendersFor(viewer.interestedIn);
     const acceptableInterests = interestsAcceptingGender(viewer.gender);
@@ -152,6 +157,14 @@ export const discoveryService = {
         AND p.interested_in = ANY($3::interested_in_t[])
         AND EXTRACT(YEAR FROM AGE(u.birth_date)) BETWEEN $4 AND $5
         AND $6 BETWEEN p.min_age AND p.max_age
+        AND (
+          cardinality($8::text[]) = 0
+          OR EXISTS (
+            SELECT 1 FROM user_relationship_goals cg
+            WHERE cg.user_id = u.id
+              AND cg.goal = ANY($8::text[])
+          )
+        )
         AND NOT EXISTS (
           SELECT 1 FROM blocks b
            WHERE (b.blocker_id = $1 AND b.blocked_user_id = u.id)
@@ -197,6 +210,7 @@ export const discoveryService = {
       viewer.maxAge,
       viewerAge,
       limit,
+      viewerGoals,
     ]);
 
     if (!r.rows.length) return [];

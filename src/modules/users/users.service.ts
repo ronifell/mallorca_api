@@ -427,8 +427,20 @@ export const usersService = {
   },
 
   async updateFcmToken(userId: string, token: string): Promise<void> {
+    // A physical device token must belong to at most one account. Detach it from
+    // any other user before assigning it to the current session (logout/login on
+    // a shared device, or account switch without an explicit logout).
+    await query('UPDATE users SET fcm_token = NULL WHERE fcm_token = $1 AND id <> $2', [
+      token,
+      userId,
+    ]);
     await query('UPDATE users SET fcm_token = $1 WHERE id = $2', [token, userId]);
     logger.info('FCM token saved for user', { userId, tokenPrefix: token.slice(0, 12) });
+  },
+
+  async clearFcmToken(userId: string): Promise<void> {
+    await query('UPDATE users SET fcm_token = NULL WHERE id = $1', [userId]);
+    logger.info('FCM token cleared for user', { userId });
   },
 
   async updateNotificationSettings(

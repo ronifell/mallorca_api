@@ -209,10 +209,10 @@ export const authController = {
     if (accepts.includes('application/json')) {
       res.json({ verified: true, deepLink: buildEmailVerifiedDeepLink() });
     } else {
-      // Prefer the marketing HTTPS open-app URL so Android App Links can open
-      // the app without staying on this API page. Fall back to local HTML bridge.
-      const webOpen = `${env.publicWeb.url.replace(/\/$/, '')}/open-app.html`;
-      res.redirect(302, webOpen);
+      // Serve the bridge page directly from the API so verification succeeds even
+      // when the marketing /open-app.html page is unavailable (404) or App Links
+      // are not yet verified on the device.
+      res.type('html').send(buildVerifiedPageHtml(buildEmailVerifiedDeepLink()));
     }
   },
 

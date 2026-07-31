@@ -23,6 +23,7 @@ router.delete('/me/photos/:id', asyncHandler(usersController.deletePhoto));
 router.patch('/me/photos/order', asyncHandler(usersController.reorderPhotos));
 
 router.put('/me/fcm-token', asyncHandler(usersController.updateFcm));
+router.delete('/me/fcm-token', asyncHandler(usersController.deleteFcm));
 router.patch(
   '/me/notification-settings',
   asyncHandler(usersController.updateNotificationSettings),

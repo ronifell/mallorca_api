@@ -73,6 +73,12 @@ export const env = {
   nodeEnv: process.env.NODE_ENV ?? 'development',
   port: Number(process.env.PORT ?? 4000),
   apiBaseUrl: process.env.API_BASE_URL ?? 'http://localhost:4000',
+  /** Public HTTPS API origin used in outbound emails (must not be a LAN IP). */
+  publicApiUrl: (
+    process.env.PUBLIC_API_URL ??
+    process.env.API_BASE_URL ??
+    'https://api.citasmallorca.es'
+  ).replace(/\/$/, ''),
   corsOrigin: process.env.CORS_ORIGIN ?? '*',
 
   database: {
