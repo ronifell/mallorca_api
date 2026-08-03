@@ -34,7 +34,12 @@ export function createApp(): Application {
   }));
 
   app.get('/health', (_req, res) => {
-    res.json({ ok: true, env: env.nodeEnv, time: new Date().toISOString() });
+    res.json({
+      ok: true,
+      env: env.nodeEnv,
+      time: new Date().toISOString(),
+      gitCommit: process.env.GIT_COMMIT ?? null,
+    });
   });
 
   app.use(globalLimiter);
