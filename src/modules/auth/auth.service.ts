@@ -100,6 +100,12 @@ function hasGoogleConsent(input: GoogleLoginInput): boolean {
   return input.acceptedTerms === true && input.acceptedPrivacy === true;
 }
 
+function googleConsentMessage(language?: 'en' | 'es'): string {
+  return language === 'en'
+    ? 'You must accept the Terms and Conditions and Privacy Policy.'
+    : 'Debes aceptar los Términos y la Política de Privacidad.';
+}
+
 async function verifyGoogleIdToken(
   idToken: string,
 ): Promise<{ sub: string; email: string; name: string | null; emailVerified: boolean }> {
@@ -372,7 +378,7 @@ export const authService = {
         user = existing;
       } else {
         if (!hasGoogleConsent(input)) {
-          throw BadRequest('Debes aceptar los Términos y la Política de Privacidad.');
+          throw BadRequest(googleConsentMessage(input.language));
         }
 
         const role = isAdminEmail(google.email) ? 'admin' : 'user';
