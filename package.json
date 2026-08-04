@@ -12,6 +12,7 @@
     "migrate:prod": "node dist/db/migrate.js",
     "seed:discovery": "ts-node src/db/seed-discovery.ts",
     "verify:push": "ts-node scripts/verify-push.ts",
+    "verify:play-billing": "ts-node scripts/verify-play-billing.ts",
     "test:push": "ts-node scripts/send-test-push.ts",
     "verify:content-filter": "ts-node scripts/verify-content-filter.ts",
     "lint": "eslint \"src/**/*.ts\"",

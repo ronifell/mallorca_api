@@ -99,6 +99,15 @@ function parseServiceAccountCredentials(): Record<string, unknown> {
   return creds;
 }
 
+function googlePlayServiceAccountEmail(): string | null {
+  try {
+    const creds = parseServiceAccountCredentials();
+    return typeof creds.client_email === 'string' ? creds.client_email : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Cached AndroidPublisher client — avoids re-instantiating on every request. */
 let cachedAndroidPublisher: androidpublisher_v3.Androidpublisher | null = null;
 async function getAndroidPublisher(): Promise<androidpublisher_v3.Androidpublisher> {
@@ -179,10 +188,25 @@ async function validateWithGooglePlay(
     if (e?.code === 404 || e?.code === 410) {
       throw BadRequest('Google Play no reconoce este token de compra.');
     }
+    if (e?.code === 401) {
+      logger.error('Google Play validation failed — service account lacks Play Console permissions', {
+        productId,
+        code: e?.code,
+        message: e?.message,
+        serviceAccountEmail: googlePlayServiceAccountEmail(),
+        packageName: env.googlePlay.packageName,
+        hint:
+          'In Play Console → Users and permissions, grant this service account: View financial data + Manage orders and subscriptions.',
+      });
+      throw BadRequest(
+        'Estamos verificando tu pago con Google Play. Vuelve a la pantalla Premium y pulsa «Restaurar compras» en unos minutos para activar tu suscripción. Si el problema persiste, contáctanos.',
+      );
+    }
     logger.error('Google Play validation failed', {
       productId,
       code: e?.code,
       message: e?.message,
+      serviceAccountEmail: googlePlayServiceAccountEmail(),
     });
     throw BadRequest('La validación con Google Play ha fallado. Inténtalo de nuevo.');
   }

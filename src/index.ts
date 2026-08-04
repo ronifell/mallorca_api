@@ -27,6 +27,15 @@ async function main() {
         'FCM not configured at startup — chat push will not work until FIREBASE_* is set in Backend/.env and the process is restarted (pm2 restart mallorca-api)',
       );
     }
+    if (!env.googlePlay.serviceAccountJson || !env.googlePlay.packageName) {
+      logger.warn(
+        'Google Play validation not configured — Premium purchases cannot be activated until play-service-account.json is present and GOOGLE_PLAY_PACKAGE_NAME is set (run scripts/configure-play-billing-on-server.sh)',
+      );
+    } else if (!env.billing.allowMock) {
+      logger.info('Google Play billing validation enabled', {
+        packageName: env.googlePlay.packageName,
+      });
+    }
   });
 
   // Lightweight scheduler for subscription expiry. In production prefer a

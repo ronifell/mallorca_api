@@ -44,29 +44,41 @@ function resolveGooglePlayServiceAccountJson(): string {
   if (inline) return inline;
 
   const filePathRaw = (process.env.GOOGLE_SERVICE_ACCOUNT_JSON_PATH ?? '').trim();
-  if (!filePathRaw) return '';
+  const candidates: string[] = [];
 
-  const resolved = path.isAbsolute(filePathRaw)
-    ? filePathRaw
-    : path.join(backendRoot, filePathRaw);
-
-  if (!fs.existsSync(resolved)) {
-    console.warn(
-      `[env] GOOGLE_SERVICE_ACCOUNT_JSON_PATH not found: ${resolved}`,
+  if (filePathRaw) {
+    candidates.push(
+      path.isAbsolute(filePathRaw) ? filePathRaw : path.join(backendRoot, filePathRaw),
     );
-    return '';
+  }
+  // Default deploy layout: JSON sits next to Backend/.env in ~/mallorca_api/.
+  candidates.push(path.join(backendRoot, 'play-service-account.json'));
+
+  const tried = [...new Set(candidates)];
+
+  for (const resolved of tried) {
+    if (!fs.existsSync(resolved)) continue;
+    try {
+      const json = fs.readFileSync(resolved, 'utf8').trim();
+      if (json && resolved !== tried[0]) {
+        console.warn(
+          `[env] Loaded Google Play credentials from fallback path: ${resolved}`,
+        );
+      }
+      return json;
+    } catch (err) {
+      console.warn(
+        `[env] Failed to read GOOGLE_SERVICE_ACCOUNT_JSON_PATH (${resolved}): ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
   }
 
-  try {
-    return fs.readFileSync(resolved, 'utf8').trim();
-  } catch (err) {
-    console.warn(
-      `[env] Failed to read GOOGLE_SERVICE_ACCOUNT_JSON_PATH: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-    );
-    return '';
-  }
+  console.warn(
+    `[env] GOOGLE_SERVICE_ACCOUNT_JSON not found. Tried: ${tried.join(', ')}`,
+  );
+  return '';
 }
 
 export const env = {
