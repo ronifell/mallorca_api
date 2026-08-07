@@ -34,9 +34,24 @@ async function main() {
     } else if (!env.billing.allowMock) {
       logger.info('Google Play billing validation enabled', {
         packageName: env.googlePlay.packageName,
+        rtdnConfigured: Boolean(env.googlePlay.rtdnToken),
       });
+      if (!env.googlePlay.rtdnToken) {
+        logger.warn(
+          'GOOGLE_PLAY_RTDN_TOKEN not configured — Play renewal/cancel/expiry webhooks will not reconcile entitlements until set on the Pub/Sub push URL',
+        );
+      }
     }
   });
+
+  try {
+    const expired = await subscriptionsService.expireDue();
+    if (expired > 0) logger.info('Subscriptions expired on startup', { count: expired });
+  } catch (e) {
+    logger.error('Subscription expiry on startup failed', {
+      err: e instanceof Error ? e.message : String(e),
+    });
+  }
 
   // Lightweight scheduler for subscription expiry. In production prefer a
   // dedicated worker / external cron, but this guarantees premium revocation

@@ -5,6 +5,7 @@ import { categoryMessage, inspectContent } from '../../utils/contentFilter';
 import { BadRequest, Conflict, ContentBlocked, NotFound } from '../../utils/errors';
 import { logger } from '../../utils/logger';
 import type { Gender } from '../discovery/compatibility';
+import { subscriptionsService } from '../subscriptions/subscriptions.service';
 import { UpdateProfileInput } from './users.schemas';
 
 const MAX_PHOTOS = 6;
@@ -113,6 +114,8 @@ async function loadRelationshipGoals(userId: string): Promise<RelationshipGoal[]
 
 export const usersService = {
   async getMyProfile(userId: string): Promise<MyProfile> {
+    const premium = await subscriptionsService.reconcileUserPremium(userId);
+
     const r = await query<{
       id: string;
       email: string;
@@ -165,7 +168,7 @@ export const usersService = {
       bio: u.bio,
       languages,
       photos,
-      isPremium: u.is_premium,
+      isPremium: premium.isPremium,
       interestedIn: u.interested_in,
       interestSelections,
       relationshipGoals,

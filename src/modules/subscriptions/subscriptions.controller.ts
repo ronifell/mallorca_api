@@ -24,6 +24,7 @@ export const subscriptionsController = {
     res.json({
       mockEnabled: env.billing.allowMock,
       googlePlayConfigured,
+      rtdnConfigured: Boolean(env.googlePlay.rtdnToken),
     });
   },
 

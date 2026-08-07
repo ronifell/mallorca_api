@@ -486,7 +486,75 @@ export const subscriptionsService = {
     };
   },
 
-  async getStatus(userId: string) {
+  /**
+   * Revoke premium when the stored entitlement date has passed. Also marks
+   * matching subscription rows as expired so DB state stays consistent.
+   */
+  async revokeExpiredPremiumForUser(userId: string): Promise<boolean> {
+    const r = await query(
+      `UPDATE users
+          SET is_premium = FALSE
+        WHERE id = $1
+          AND is_premium = TRUE
+          AND (premium_until IS NULL OR premium_until < NOW())
+       RETURNING id`,
+      [userId],
+    );
+    if ((r.rowCount ?? 0) > 0) {
+      await query(
+        `UPDATE subscriptions
+            SET status = 'expired', updated_at = NOW()
+          WHERE user_id = $1
+            AND status IN ('active', 'grace', 'cancelled')
+            AND expiry_date < NOW()`,
+        [userId],
+      );
+      return true;
+    }
+    return false;
+  },
+
+  /**
+   * Re-fetch the user's latest Google Play subscription from the Play API.
+   * Used on status reads and after RTDN so expired/cancelled subs are
+   * reconciled even when the hourly cleanup job has not run yet.
+   */
+  async refreshGooglePlaySubscriptionForUser(userId: string): Promise<void> {
+    if (!env.googlePlay.serviceAccountJson || !env.googlePlay.packageName) return;
+
+    const r = await query<{ product_id: string; purchase_token: string }>(
+      `SELECT product_id, purchase_token
+         FROM subscriptions
+        WHERE user_id = $1 AND platform = 'google_play'
+        ORDER BY expiry_date DESC NULLS LAST, updated_at DESC
+        LIMIT 1`,
+      [userId],
+    );
+    const sub = r.rows[0];
+    if (!sub) return;
+    await this.syncGooglePlayPurchase(sub.product_id, sub.purchase_token);
+  },
+
+  /**
+   * On-demand entitlement reconciliation: expire by date, then refresh from
+   * Google Play when the user still appears premium (handles Play-side
+   * expiry before our hourly job or a missed RTDN).
+   */
+  async reconcileUserPremium(userId: string): Promise<{
+    isPremium: boolean;
+    expiryDate: string | null;
+  }> {
+    await this.revokeExpiredPremiumForUser(userId);
+
+    const premiumCheck = await query<{ is_premium: boolean }>(
+      'SELECT is_premium FROM users WHERE id = $1',
+      [userId],
+    );
+    if (premiumCheck.rows[0]?.is_premium) {
+      await this.refreshGooglePlaySubscriptionForUser(userId);
+      await this.revokeExpiredPremiumForUser(userId);
+    }
+
     const r = await query<{
       is_premium: boolean;
       premium_until: Date | null;
@@ -496,6 +564,10 @@ export const subscriptionsService = {
       isPremium: u?.is_premium ?? false,
       expiryDate: u?.premium_until ? u.premium_until.toISOString() : null,
     };
+  },
+
+  async getStatus(userId: string) {
+    return this.reconcileUserPremium(userId);
   },
 
   /**
@@ -602,7 +674,7 @@ export const subscriptionsService = {
       }
       const userId = upd.rows[0].user_id;
 
-      const isActive = status === 'active' && expiryMs > Date.now();
+      const isActive = expiryMs > Date.now() && status !== 'expired';
       await client.query(
         `UPDATE users
             SET is_premium    = $2,
