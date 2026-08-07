@@ -17,6 +17,10 @@
 --
 -- Usage (from Backend folder with .env loaded):
 --   psql -h localhost -U postgres -d mallorca_dating -f src/db/scripts/reset_all_data.sql
+--
+-- Usage (backend terminal — preferred):
+--   npm run reset:data -- --yes
+--   npm run reset:data:prod -- --yes   # after npm run build on server
 -- =============================================================================
 
 BEGIN;
@@ -34,9 +38,13 @@ TRUNCATE TABLE
   photos,
   user_languages,
   user_preferences,
+  user_relationship_goals,
+  user_interest_selections,
   notification_settings,
   refresh_tokens,
   password_resets,
+  email_verifications,
+  super_like_usages,
   users
 RESTART IDENTITY CASCADE;
 

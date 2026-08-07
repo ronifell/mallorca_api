@@ -10,6 +10,8 @@
     "start": "node dist/index.js",
     "migrate": "ts-node src/db/migrate.ts",
     "migrate:prod": "node dist/db/migrate.js",
+    "reset:data": "ts-node src/db/reset-all-data.ts",
+    "reset:data:prod": "node dist/db/reset-all-data.js",
     "seed:discovery": "ts-node src/db/seed-discovery.ts",
     "verify:push": "ts-node scripts/verify-push.ts",
     "verify:play-billing": "ts-node scripts/verify-play-billing.ts",
