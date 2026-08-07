@@ -543,6 +543,7 @@ export const subscriptionsService = {
   async reconcileUserPremium(userId: string): Promise<{
     isPremium: boolean;
     expiryDate: string | null;
+    productId: Plan | null;
   }> {
     await this.revokeExpiredPremiumForUser(userId);
 
@@ -560,9 +561,28 @@ export const subscriptionsService = {
       premium_until: Date | null;
     }>('SELECT is_premium, premium_until FROM users WHERE id = $1', [userId]);
     const u = r.rows[0];
+
+    const sub = await query<{ product_id: string }>(
+      `SELECT product_id
+         FROM subscriptions
+        WHERE user_id = $1
+          AND platform = 'google_play'
+          AND status IN ('active', 'grace', 'cancelled')
+          AND expiry_date > NOW()
+        ORDER BY expiry_date DESC, updated_at DESC
+        LIMIT 1`,
+      [userId],
+    );
+    const productIdRaw = sub.rows[0]?.product_id;
+    const productId =
+      productIdRaw === 'monthly_premium' || productIdRaw === 'annual_premium'
+        ? productIdRaw
+        : null;
+
     return {
       isPremium: u?.is_premium ?? false,
       expiryDate: u?.premium_until ? u.premium_until.toISOString() : null,
+      productId,
     };
   },
 
