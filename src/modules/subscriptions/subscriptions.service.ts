@@ -16,6 +16,7 @@ import { env } from '../../config/env';
 import { premiumWelcomeEmail } from '../../services/emailTemplates';
 import { sendMail } from '../../services/mailer';
 import { BadRequest, Unauthorized } from '../../utils/errors';
+import { createAndroidPublisherClient } from '../../utils/googlePlayPublisher';
 import { logger } from '../../utils/logger';
 
 export type Plan = 'monthly_premium' | 'annual_premium';
@@ -112,13 +113,13 @@ function googlePlayServiceAccountEmail(): string | null {
 let cachedAndroidPublisher: androidpublisher_v3.Androidpublisher | null = null;
 async function getAndroidPublisher(): Promise<androidpublisher_v3.Androidpublisher> {
   if (cachedAndroidPublisher) return cachedAndroidPublisher;
-  const { google } = await import('googleapis');
-  const credentials = parseServiceAccountCredentials();
-  const auth = new google.auth.GoogleAuth({
-    credentials,
-    scopes: ['https://www.googleapis.com/auth/androidpublisher'],
-  });
-  cachedAndroidPublisher = google.androidpublisher({ version: 'v3', auth });
+  const raw = env.googlePlay.serviceAccountJson;
+  if (!raw) {
+    throw BadRequest(
+      'La facturación de Google Play no está configurada en el servidor. Contacta con soporte.',
+    );
+  }
+  cachedAndroidPublisher = await createAndroidPublisherClient(raw);
   return cachedAndroidPublisher;
 }
 
