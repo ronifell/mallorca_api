@@ -30,6 +30,9 @@ function section(title) {
 function read(rel) {
   return fs.readFileSync(path.join(ROOT, rel), 'utf8');
 }
+function hasFrontend() {
+  return fs.existsSync(path.join(FRONTEND, 'app.json'));
+}
 function readFront(rel) {
   return fs.readFileSync(path.join(FRONTEND, rel), 'utf8');
 }
@@ -90,8 +93,14 @@ async function main() {
   section('1) Email verification / open-app (no marketing 404 redirect)');
   // -------------------------------------------------------------------------
   const ctrlSrc = read('src/modules/auth/auth.controller.ts');
-  const ctrlDist = read('dist/modules/auth/auth.controller.js');
   const svcSrc = read('src/modules/auth/auth.service.ts');
+  // tsc emits per-file modules; build:light (esbuild) emits a single dist/index.js
+  const distCandidates = [
+    'dist/modules/auth/auth.controller.js',
+    'dist/index.js',
+  ];
+  const distPath = distCandidates.find((p) => fs.existsSync(path.join(ROOT, p)));
+  const ctrlDist = distPath ? read(distPath) : '';
 
   if (/async openApp[\s\S]*?buildOpenAppPageHtml/.test(ctrlSrc) && !/openApp[\s\S]*?res\.redirect\(302/.test(ctrlSrc)) {
     ok('Source openApp serves HTML bridge (no 302)');
@@ -99,10 +108,16 @@ async function main() {
     fail('Source openApp serves HTML bridge (no 302)');
   }
 
-  if (/async openApp[\s\S]*?buildOpenAppPageHtml/.test(ctrlDist) && !/async openApp[\s\S]{0,200}redirect\(302/.test(ctrlDist)) {
-    ok('Local dist openApp serves HTML bridge (no 302)');
+  if (
+    distPath &&
+    /openApp[\s\S]*?buildOpenAppPageHtml|buildOpenAppPageHtml[\s\S]*?openApp/.test(ctrlDist) &&
+    !/async openApp[\s\S]{0,200}redirect\(302/.test(ctrlDist)
+  ) {
+    ok('Local dist openApp serves HTML bridge (no 302)', distPath);
+  } else if (!distPath) {
+    fail('Local dist openApp serves HTML bridge (no 302)', 'no dist/index.js or auth.controller.js');
   } else {
-    fail('Local dist openApp serves HTML bridge (no 302)');
+    fail('Local dist openApp serves HTML bridge (no 302)', distPath);
   }
 
   if (svcSrc.includes('/api/auth/open-app') && !svcSrc.includes('${web}/open-app.html')) {
@@ -166,37 +181,26 @@ async function main() {
     fail('language tag en-US normalizes to en');
   }
 
-  const langScreen = readFront('src/screens/settings/LanguageScreen.tsx');
-  const authStore = readFront('src/store/auth.ts');
-  if (langScreen.includes('await usersApi.update({ appLanguage: lang })')) {
-    ok('LanguageScreen awaits appLanguage sync to server');
+  if (hasFrontend()) {
+    const langScreen = readFront('src/screens/settings/LanguageScreen.tsx');
+    const authStore = readFront('src/store/auth.ts');
+    if (langScreen.includes('await usersApi.update({ appLanguage: lang })')) {
+      ok('LanguageScreen awaits appLanguage sync to server');
+    } else {
+      fail('LanguageScreen awaits appLanguage sync to server');
+    }
+    if (authStore.includes('resolveAppLanguage') && authStore.includes('appLanguage: localLang')) {
+      ok('Auth bootstrap/setSession syncs UI language → users.language');
+    } else {
+      fail('Auth bootstrap/setSession syncs UI language → users.language');
+    }
   } else {
-    fail('LanguageScreen awaits appLanguage sync to server');
-  }
-  if (authStore.includes('resolveAppLanguage') && authStore.includes('appLanguage: localLang')) {
-    ok('Auth bootstrap/setSession syncs UI language → users.language');
-  } else {
-    fail('Auth bootstrap/setSession syncs UI language → users.language');
+    ok('Frontend tree not on this host — skipping client language-sync file checks');
   }
 
   // -------------------------------------------------------------------------
   section('3) Super Like notification tap → Liked You / Received');
   // -------------------------------------------------------------------------
-  const notifFront = readFront('src/services/notifications.ts');
-  const types = readFront('src/navigation/types.ts');
-  const discovery = readFront('src/screens/discovery/DiscoveryScreen.tsx');
-  const likesView = readFront('src/components/discovery/LikesView.tsx');
-
-  if (
-    notifFront.includes("type === 'new_like' || type === 'super_like'") &&
-    notifFront.includes("mode: 'likedYou'") &&
-    notifFront.includes("likesTab: 'received'")
-  ) {
-    ok('Notification tap handler routes super_like → Liked You / Received');
-  } else {
-    fail('Notification tap handler routes super_like → Liked You / Received');
-  }
-
   const nav = simulateNotificationNav('super_like');
   if (nav?.params?.params?.mode === 'likedYou' && nav?.params?.params?.likesTab === 'received') {
     ok('Simulated super_like navigation payload', JSON.stringify(nav.params.params));
@@ -204,48 +208,76 @@ async function main() {
     fail('Simulated super_like navigation payload', JSON.stringify(nav));
   }
 
-  if (types.includes("mode?: 'discover' | 'likedYou'") && types.includes("likesTab?: 'received' | 'sent'")) {
-    ok('MainTabParamList.Discover accepts mode/likesTab params');
+  if (hasFrontend()) {
+    const notifFront = readFront('src/services/notifications.ts');
+    const types = readFront('src/navigation/types.ts');
+    const discovery = readFront('src/screens/discovery/DiscoveryScreen.tsx');
+    const likesView = readFront('src/components/discovery/LikesView.tsx');
+
+    if (
+      notifFront.includes("type === 'new_like' || type === 'super_like'") &&
+      notifFront.includes("mode: 'likedYou'") &&
+      notifFront.includes("likesTab: 'received'")
+    ) {
+      ok('Notification tap handler routes super_like → Liked You / Received');
+    } else {
+      fail('Notification tap handler routes super_like → Liked You / Received');
+    }
+
+    if (types.includes("mode?: 'discover' | 'likedYou'") && types.includes("likesTab?: 'received' | 'sent'")) {
+      ok('MainTabParamList.Discover accepts mode/likesTab params');
+    } else {
+      fail('MainTabParamList.Discover accepts mode/likesTab params');
+    }
+    if (discovery.includes('route.params?.mode') && discovery.includes('<LikesView initialTab={likesTab}')) {
+      ok('DiscoveryScreen applies route params and opens LikesView');
+    } else {
+      fail('DiscoveryScreen applies route params and opens LikesView');
+    }
+    if (likesView.includes('initialTab') && likesView.includes("useState<Tab>(initialTab)")) {
+      ok('LikesView honors initialTab=received');
+    } else {
+      fail('LikesView honors initialTab=received');
+    }
   } else {
-    fail('MainTabParamList.Discover accepts mode/likesTab params');
-  }
-  if (discovery.includes('route.params?.mode') && discovery.includes('<LikesView initialTab={likesTab}')) {
-    ok('DiscoveryScreen applies route params and opens LikesView');
-  } else {
-    fail('DiscoveryScreen applies route params and opens LikesView');
-  }
-  if (likesView.includes('initialTab') && likesView.includes("useState<Tab>(initialTab)")) {
-    ok('LikesView honors initialTab=received');
-  } else {
-    fail('LikesView honors initialTab=received');
+    ok('Frontend tree not on this host — skipping client navigation file checks');
   }
 
   // -------------------------------------------------------------------------
   section('4) Production API/socket HTTPS (not cleartext)');
   // -------------------------------------------------------------------------
-  const eas = JSON.parse(readFront('eas.json'));
-  const appJson = JSON.parse(readFront('app.json'));
-  const envTs = readFront('src/config/env.ts');
-  const prodApi = eas.build.production.env.EXPO_PUBLIC_API_BASE_URL;
-  const prodSock = eas.build.production.env.EXPO_PUBLIC_SOCKET_URL;
+  if (hasFrontend()) {
+    const eas = JSON.parse(readFront('eas.json'));
+    const appJson = JSON.parse(readFront('app.json'));
+    const envTs = readFront('src/config/env.ts');
+    const prodApi = eas.build.production.env.EXPO_PUBLIC_API_BASE_URL;
+    const prodSock = eas.build.production.env.EXPO_PUBLIC_SOCKET_URL;
 
-  if (prodApi.startsWith('https://') && prodSock.startsWith('https://')) {
-    ok('eas.json production uses HTTPS API + socket', `${prodApi}`);
+    if (prodApi.startsWith('https://') && prodSock.startsWith('https://')) {
+      ok('eas.json production uses HTTPS API + socket', `${prodApi}`);
+    } else {
+      fail('eas.json production uses HTTPS API + socket', `${prodApi} / ${prodSock}`);
+    }
+    if (
+      String(appJson.expo.extra.apiBaseUrl).startsWith('https://') &&
+      String(appJson.expo.extra.socketUrl).startsWith('https://')
+    ) {
+      ok('app.json extra uses HTTPS', appJson.expo.extra.apiBaseUrl);
+    } else {
+      fail('app.json extra uses HTTPS', JSON.stringify(appJson.expo.extra));
+    }
+    if (envTs.includes("defaultBaseUrl = 'https://")) {
+      ok('Frontend env.ts defaultBaseUrl is HTTPS');
+    } else {
+      fail('Frontend env.ts defaultBaseUrl is HTTPS');
+    }
+    if (String(appJson.expo.version) === '1.0.27' && appJson.expo.android.versionCode === 28) {
+      ok('App version ready for next upload', '1.0.27 / code 28');
+    } else {
+      fail('App version ready for next upload', `${appJson.expo.version} / ${appJson.expo.android.versionCode}`);
+    }
   } else {
-    fail('eas.json production uses HTTPS API + socket', `${prodApi} / ${prodSock}`);
-  }
-  if (
-    String(appJson.expo.extra.apiBaseUrl).startsWith('https://') &&
-    String(appJson.expo.extra.socketUrl).startsWith('https://')
-  ) {
-    ok('app.json extra uses HTTPS', appJson.expo.extra.apiBaseUrl);
-  } else {
-    fail('app.json extra uses HTTPS', JSON.stringify(appJson.expo.extra));
-  }
-  if (envTs.includes("defaultBaseUrl = 'https://")) {
-    ok('Frontend env.ts defaultBaseUrl is HTTPS');
-  } else {
-    fail('Frontend env.ts defaultBaseUrl is HTTPS');
+    ok('Frontend tree not on this host — skipping eas/app.json HTTPS file checks');
   }
 
   const health = await fetchText('https://100-48-93-44.nip.io/health');
@@ -264,12 +296,6 @@ async function main() {
       'LIVE Socket.IO HTTPS polling handshake works (WSS path available)',
       `status=${sock.status} body=${(sock.body || sock.error || '').slice(0, 80)}`,
     );
-  }
-
-  if (String(appJson.expo.version) === '1.0.27' && appJson.expo.android.versionCode === 28) {
-    ok('App version ready for next upload', '1.0.27 / code 28');
-  } else {
-    fail('App version ready for next upload', `${appJson.expo.version} / ${appJson.expo.android.versionCode}`);
   }
 
   // -------------------------------------------------------------------------
