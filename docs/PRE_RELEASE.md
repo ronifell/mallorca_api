@@ -58,18 +58,23 @@ Typical Expo/React Native trees pull many transitive advisories (Metro, image to
 
 ## 3. Release tags & `/health` gitCommit
 
-**Tags (create after commits land on `main`):**
+**Tags (created locally):**
+
+| Tag | Repo | Commit | Meaning |
+|-----|------|--------|---------|
+| `app-1.0.28-code29` | Frontend | `dc81608` | Regression-tested internal AAB 1.0.28 / code 29 |
+| `app-1.0.28-code29-prod-ready` | Frontend | `fd61c39` | Same + production cleartext disabled (rebuild before Play prod) |
+| `api-code29` | Backend | `c014317` | API with CORS hardening, `/health` gitCommit, uploads removed |
 
 ```bash
-# Frontend (app 1.0.28 / versionCode 29)
+# Push tags (Backend history was rewritten — force-with-lease required for main)
 cd Frontend
-git tag -a app-1.0.28-code29 -m "Play internal/production AAB 1.0.28 (versionCode 29)"
-git push origin app-1.0.28-code29
+git push origin main
+git push origin app-1.0.28-code29 app-1.0.28-code29-prod-ready
 
-# Backend (deployed API matching that client)
 cd Backend
-git tag -a api-code29 -m "API paired with app code 29"
-git push origin api-code29
+git push --force-with-lease origin main
+git push origin api-code29 --force
 ```
 
 **Exposing SHA:**
