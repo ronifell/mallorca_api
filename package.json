@@ -39,7 +39,7 @@
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
     "multer": "^1.4.5-lts.1",
-    "nodemailer": "^6.9.14",
+    "nodemailer": "^9.0.5",
     "pg": "^8.12.0",
     "socket.io": "^4.7.5",
     "uuid": "^10.0.0",
@@ -62,5 +62,8 @@
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.5.3"
+  },
+  "overrides": {
+    "tar": "^7.5.22"
   }
 }
