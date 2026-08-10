@@ -6,6 +6,7 @@ import path from 'path';
 import { env, isProd } from './config/env';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { globalLimiter } from './middleware/rateLimit';
+import { resolveGitCommit } from './utils/buildInfo';
 
 import authRoutes from './modules/auth/auth.routes';
 import chatRoutes from './modules/chat/chat.routes';
@@ -38,7 +39,7 @@ export function createApp(): Application {
       ok: true,
       env: env.nodeEnv,
       time: new Date().toISOString(),
-      gitCommit: process.env.GIT_COMMIT ?? null,
+      gitCommit: resolveGitCommit(),
     });
   });
 

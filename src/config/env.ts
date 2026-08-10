@@ -81,6 +81,33 @@ function resolveGooglePlayServiceAccountJson(): string {
   return '';
 }
 
+/** Production browser/admin origins allowed when CORS_ORIGIN is unset or `*`. */
+const PROD_CORS_DEFAULTS = [
+  'https://www.citasmallorca.es',
+  'https://citasmallorca.es',
+  'https://100-48-93-44.nip.io',
+];
+
+/**
+ * Parse CORS_ORIGIN. Returns:
+ * - `true` in development when unset/`*` (reflect request origin; safe with credentials)
+ * - an allowlist in production (never `*` with credentials:true)
+ * - an explicit host or host list from the env var
+ */
+function resolveCorsOrigin(): boolean | string | string[] {
+  const raw = (process.env.CORS_ORIGIN ?? '').trim();
+  const isProduction = (process.env.NODE_ENV ?? 'development') === 'production';
+  if (!raw || raw === '*') {
+    return isProduction ? PROD_CORS_DEFAULTS : true;
+  }
+  const list = raw.split(',').map((s) => s.trim()).filter(Boolean);
+  if (list.length === 0) return isProduction ? PROD_CORS_DEFAULTS : true;
+  if (list.length === 1 && list[0] === '*') {
+    return isProduction ? PROD_CORS_DEFAULTS : true;
+  }
+  return list.length === 1 ? list[0]! : list;
+}
+
 export const env = {
   nodeEnv: process.env.NODE_ENV ?? 'development',
   port: Number(process.env.PORT ?? 4000),
@@ -91,7 +118,11 @@ export const env = {
     process.env.API_BASE_URL ??
     'https://api.citasmallorca.es'
   ).replace(/\/$/, ''),
-  corsOrigin: process.env.CORS_ORIGIN ?? '*',
+  /**
+   * CORS allowlist. In production, `*` / empty falls back to the public web + API
+   * hosts (credentials:true cannot use a wildcard). Dev reflects the request origin.
+   */
+  corsOrigin: resolveCorsOrigin(),
 
   database: {
     url: required('DATABASE_URL', 'postgres://postgres:postgres@localhost:5432/mallorca_dating'),

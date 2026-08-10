@@ -11,8 +11,11 @@ logs/
 *.swo
 .idea/
 .vscode/
-# Google Play / cloud service-account keys — never commit
+# Google Play / cloud service-account keys ? never commit
 play-service-account.json
 **/service-account*.json
 citas-mallorca-*.json
 
+# Local/dev media fallback ? never commit user uploads
+uploads/
+!uploads/.gitkeep

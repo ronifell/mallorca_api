@@ -1,6 +1,7 @@
 /**
  * Low-memory production build for small VPS (e.g. t3.micro).
  * Transpiles with esbuild (no full typecheck) and copies SQL migrations.
+ * Also writes dist/build-info.json with the git SHA for /health.
  */
 const esbuild = require('esbuild');
 const { cpSync, mkdirSync, rmSync } = require('fs');
@@ -12,6 +13,9 @@ const dist = path.join(root, 'dist');
 async function main() {
   rmSync(dist, { recursive: true, force: true });
   mkdirSync(path.join(dist, 'db'), { recursive: true });
+
+  // Writes dist/build-info.json (git SHA for GET /health).
+  require('./write-build-info.cjs');
 
   const common = {
     platform: 'node',
