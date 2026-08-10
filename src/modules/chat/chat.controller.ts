@@ -17,14 +17,44 @@ function userId(req: Request): string {
   return req.user.sub;
 }
 
-function messagePreview(msg: {
-  type: 'text' | 'image' | 'audio';
-  text: string | null;
-}): string {
+type AppLang = 'en' | 'es';
+
+async function receiverLanguage(receiverId: string): Promise<AppLang> {
+  const r = await query<{ language: string | null }>(
+    'SELECT language FROM users WHERE id = $1',
+    [receiverId],
+  );
+  const raw = (r.rows[0]?.language ?? 'en').toLowerCase();
+  return raw.startsWith('en') ? 'en' : 'es';
+}
+
+const MEDIA_PREVIEW = {
+  image: {
+    en: '📷 Sent you a photo',
+    es: '📷 Te ha enviado una foto',
+  },
+  audio: {
+    en: '🎤 Sent you a voice message',
+    es: '🎤 Te ha enviado un mensaje de voz',
+  },
+  generic: {
+    en: 'You have a new message.',
+    es: 'Tienes un nuevo mensaje.',
+  },
+} as const;
+
+async function messagePreview(
+  msg: {
+    type: 'text' | 'image' | 'audio';
+    text: string | null;
+  },
+  receiverId: string,
+): Promise<string> {
   if (msg.type === 'text' && msg.text?.trim()) return msg.text.trim();
-  if (msg.type === 'image') return '📷 Te ha enviado una foto';
-  if (msg.type === 'audio') return '🎤 Te ha enviado un mensaje de voz';
-  return 'Tienes un nuevo mensaje.';
+  const lang = await receiverLanguage(receiverId);
+  if (msg.type === 'image') return MEDIA_PREVIEW.image[lang];
+  if (msg.type === 'audio') return MEDIA_PREVIEW.audio[lang];
+  return MEDIA_PREVIEW.generic[lang];
 }
 
 export const chatController = {
@@ -57,7 +87,7 @@ export const chatController = {
         msg.receiverId,
         nameR.rows[0]?.first_name ?? 'Citas Mallorca',
         msg.conversationId,
-        messagePreview(msg),
+        await messagePreview(msg, msg.receiverId),
       );
     } catch (e) {
       logger.error('Chat message push failed', {
