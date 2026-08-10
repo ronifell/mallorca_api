@@ -391,18 +391,11 @@ export const usersService = {
   },
 
   async deleteAccount(userId: string): Promise<void> {
-    // GDPR: hard delete cascades remove photos, likes, matches, messages, etc.
-    // We mark the user as deleted first (soft) then optionally hard delete.
+    // GDPR: hard delete. Soft-delete left google_sub / subscriptions / ghost
+    // rows that broke re-registration with the same email (verify OK, then
+    // profile create failed). ON DELETE CASCADE clears related tables.
     await withTransaction(async (client) => {
-      await client.query(
-        `UPDATE users SET status = 'deleted', email = NULL, first_name = NULL,
-                          bio = NULL, city = NULL, fcm_token = NULL
-         WHERE id = $1`,
-        [userId],
-      );
-      await client.query('DELETE FROM photos WHERE user_id = $1', [userId]);
-      await client.query('DELETE FROM refresh_tokens WHERE user_id = $1', [userId]);
-      await client.query('DELETE FROM password_resets WHERE user_id = $1', [userId]);
+      await client.query('DELETE FROM users WHERE id = $1', [userId]);
     });
   },
 

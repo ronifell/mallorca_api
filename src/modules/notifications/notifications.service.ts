@@ -211,6 +211,8 @@ async function push(
   }
 }
 
+type AppLang = 'en' | 'es';
+
 async function firstNameOf(userId: string): Promise<string> {
   const r = await query<{ first_name: string | null }>(
     'SELECT first_name FROM users WHERE id = $1',
@@ -219,11 +221,71 @@ async function firstNameOf(userId: string): Promise<string> {
   return r.rows[0]?.first_name?.trim() ?? '';
 }
 
+/** Receiver's selected app language (`users.language`), not the sender's. */
+async function languageOf(userId: string): Promise<AppLang> {
+  const r = await query<{ language: string | null }>(
+    'SELECT language FROM users WHERE id = $1',
+    [userId],
+  );
+  const raw = (r.rows[0]?.language ?? 'es').toLowerCase();
+  return raw.startsWith('en') ? 'en' : 'es';
+}
+
+const PUSH_COPY = {
+  matchTitle: {
+    en: '🎉 Congrats!',
+    es: '🎉 ¡Enhorabuena!',
+  },
+  matchBody: {
+    en: (name: string) => `You matched with ${name}! Start the conversation.`,
+    es: (name: string) => `¡Has hecho un match con ${name}! Empieza la conversación.`,
+  },
+  matchBodyAnonymous: {
+    en: 'You have a new match! Open it and discover who you connected with.',
+    es: '¡Has hecho un nuevo match! Ábrelo y descubre con quién has conectado.',
+  },
+  likeTitle: {
+    en: '💖 New Like!',
+    es: '💖 ¡Nuevo Like!',
+  },
+  likeBody: {
+    en: (name: string) => `${name} liked you. Check out their profile!`,
+    es: (name: string) => `A ${name} le gustas. ¡Descubre su perfil!`,
+  },
+  likeBodyAnonymous: {
+    en: 'Someone liked you! Find out who.',
+    es: '¡Alguien te ha dado like! Descubre quién ha sido.',
+  },
+  superLikeTitle: {
+    en: "⭐ You're a superstar!",
+    es: '⭐ ¡Eres una superestrella!',
+  },
+  superLikeBody: {
+    en: 'Someone sent you a Super Like this week. Check out who sent it!',
+    es: 'Alguien te envió un Super Like esta semana. ¡Comprueba quién lo envió!',
+  },
+  messageDefaultBody: {
+    en: 'You have a new message.',
+    es: 'Tienes un nuevo mensaje.',
+  },
+  messageDefaultTitle: {
+    en: 'New message',
+    es: 'Nuevo mensaje',
+  },
+  subscriptionTitle: {
+    en: 'Your subscription is about to expire',
+    es: 'Tu suscripción está a punto de caducar',
+  },
+  subscriptionBody: {
+    en: 'Renew Premium to keep enjoying every feature.',
+    es: 'Renueva tu Premium para seguir disfrutando de todas las funciones.',
+  },
+} as const;
+
 export const notificationsService = {
   async notifyNewMatch(userAId: string, userBId: string, matchId?: string) {
     // Fetch both display names once so each push can include the OTHER
-    // user's name in the title / body (e.g. "¡Enhorabuena! Has hecho un
-    // match con Ana").
+    // user's name in the title / body.
     const [nameA, nameB] = await Promise.all([firstNameOf(userAId), firstNameOf(userBId)]);
 
     const targets: { uid: string; otherName: string }[] = [
@@ -234,11 +296,12 @@ export const notificationsService = {
     await Promise.all(
       targets.map(async ({ uid, otherName }) => {
         if (!(await isPrefEnabled(uid, 'matches_enabled'))) return;
+        const lang = await languageOf(uid);
         await push(uid, {
-          title: '🎉 ¡Enhorabuena!',
+          title: PUSH_COPY.matchTitle[lang],
           body: otherName
-            ? `¡Has hecho un match con ${otherName}! Empieza la conversación.`
-            : '¡Has hecho un nuevo match! Ábrelo y descubre con quién has conectado.',
+            ? PUSH_COPY.matchBody[lang](otherName)
+            : PUSH_COPY.matchBodyAnonymous[lang],
           data: {
             type: 'new_match',
             ...(matchId ? { matchId } : {}),
@@ -250,12 +313,12 @@ export const notificationsService = {
 
   async notifyNewLike(receiverId: string, senderId: string) {
     if (!(await isPrefEnabled(receiverId, 'matches_enabled'))) return;
-    const name = await firstNameOf(senderId);
+    const [name, lang] = await Promise.all([firstNameOf(senderId), languageOf(receiverId)]);
     await push(receiverId, {
-      title: '💖 ¡Nuevo Like!',
+      title: PUSH_COPY.likeTitle[lang],
       body: name
-        ? `A ${name} le gustas. ¡Descubre su perfil!`
-        : '¡Alguien te ha dado like! Descubre quién ha sido.',
+        ? PUSH_COPY.likeBody[lang](name)
+        : PUSH_COPY.likeBodyAnonymous[lang],
       data: { type: 'new_like', fromUserId: senderId },
     });
   },
@@ -264,9 +327,10 @@ export const notificationsService = {
     if (!(await isPrefEnabled(receiverId, 'matches_enabled'))) return;
     // Intentionally does NOT reveal the sender's name — the "check who sent
     // it" hook drives the user back into the app.
+    const lang = await languageOf(receiverId);
     await push(receiverId, {
-      title: '⭐ ¡Eres una superestrella!',
-      body: 'Alguien te envió un Super Like esta semana. ¡Comprueba quién lo envió!',
+      title: PUSH_COPY.superLikeTitle[lang],
+      body: PUSH_COPY.superLikeBody[lang],
       data: { type: 'super_like', fromUserId: senderId },
     });
   },
@@ -284,10 +348,11 @@ export const notificationsService = {
       });
       return;
     }
-    const body = preview?.trim() || 'Tienes un nuevo mensaje.';
+    const lang = await languageOf(receiverId);
+    const body = preview?.trim() || PUSH_COPY.messageDefaultBody[lang];
     logger.info('FCM push sending new_message', { receiverId, conversationId });
     await push(receiverId, {
-      title: fromName || 'Nuevo mensaje',
+      title: fromName || PUSH_COPY.messageDefaultTitle[lang],
       body,
       data: {
         type: 'new_message',
@@ -298,9 +363,10 @@ export const notificationsService = {
 
   async notifySubscriptionExpiring(userId: string) {
     if (!(await isPrefEnabled(userId, 'subscription_enabled'))) return;
+    const lang = await languageOf(userId);
     await push(userId, {
-      title: 'Tu suscripción está a punto de caducar',
-      body: 'Renueva tu Premium para seguir disfrutando de todas las funciones.',
+      title: PUSH_COPY.subscriptionTitle[lang],
+      body: PUSH_COPY.subscriptionBody[lang],
       data: { type: 'subscription_expiring' },
     });
   },

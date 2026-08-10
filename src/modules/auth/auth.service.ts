@@ -43,13 +43,12 @@ function buildAppVerifyDeepLink(rawToken: string): string {
 }
 
 /**
- * HTTPS open-app URL on the public marketing domain.
- * Email clients only allow https:// buttons; with Android App Links this
- * opens the installed app. Falls back to open-app.html Intent launcher.
+ * HTTPS open-app URL served by the API (not the marketing host).
+ * Email clients only allow https:// buttons; the API page launches the app
+ * via Android Intent / deep link and does not depend on open-app.html deploy.
  */
 function buildOpenAppUrl(): string {
-  const web = env.publicWeb.url.replace(/\/$/, '');
-  return `${web}/open-app.html`;
+  return `${env.publicApiUrl.replace(/\/$/, '')}/api/auth/open-app`;
 }
 
 async function issueVerificationToken(userId: string): Promise<string> {
@@ -101,7 +100,8 @@ function hasGoogleConsent(input: GoogleLoginInput): boolean {
 }
 
 function googleConsentMessage(language?: 'en' | 'es'): string {
-  return language === 'en'
+  const lang = language?.toLowerCase().startsWith('en') ? 'en' : 'es';
+  return lang === 'en'
     ? 'You must accept the Terms and Conditions and Privacy Policy.'
     : 'Debes aceptar los Términos y la Política de Privacidad.';
 }

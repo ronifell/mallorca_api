@@ -224,11 +224,18 @@ export const authController = {
 
   /**
    * GET /auth/open-app
-   * API-side fallback that redirects to the marketing open-app page
-   * (Android App Links host). Kept so old emails pointing here still work.
+   * Serves the in-API HTML bridge that launches the app. Do not redirect to
+   * the marketing /open-app.html host — that page has 404'd in production.
    */
   async openApp(_req: Request, res: Response) {
-    const webOpen = `${env.publicWeb.url.replace(/\/$/, '')}/open-app.html`;
-    res.redirect(302, webOpen);
+    res.type('html').send(
+      buildOpenAppPageHtml(buildEmailVerifiedDeepLink(), {
+        title: 'Citas Mallorca',
+        heading: 'Abrir Citas Mallorca',
+        message:
+          'Pulsa el botón para abrir la app. Si no se abre sola, usa el botón de abajo.',
+        androidIntent: buildAndroidOpenAppIntent('email-verified'),
+      }),
+    );
   },
 };
