@@ -227,7 +227,8 @@ async function languageOf(userId: string): Promise<AppLang> {
     'SELECT language FROM users WHERE id = $1',
     [userId],
   );
-  const raw = (r.rows[0]?.language ?? 'es').toLowerCase();
+  // Default to 'en' when unset so a missing sync never forces Spanish on EN UI users.
+  const raw = (r.rows[0]?.language ?? 'en').toLowerCase();
   return raw.startsWith('en') ? 'en' : 'es';
 }
 

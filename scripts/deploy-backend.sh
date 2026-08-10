@@ -65,6 +65,17 @@ if [ "$FCM_STATUS" = "404" ]; then
 fi
 
 echo ""
+echo "=== open-app must serve HTML (not 302 to marketing 404) ==="
+OPEN_APP_CODE="$(curl -s -o /tmp/open-app-check.html -w '%{http_code}' 'http://127.0.0.1:4000/api/auth/open-app')"
+OPEN_APP_TYPE="$(file -b --mime-type /tmp/open-app-check.html 2>/dev/null || true)"
+if grep -qi 'open-app.html' /tmp/open-app-check.html 2>/dev/null && grep -qi 'Redirecting' /tmp/open-app-check.html 2>/dev/null; then
+  echo "ERROR: /api/auth/open-app still redirects to marketing open-app.html"
+  exit 1
+fi
+echo "GET /api/auth/open-app → HTTP ${OPEN_APP_CODE} (${OPEN_APP_TYPE:-unknown})"
+
+echo ""
 echo "Deploy complete. Verify from your machine:"
-echo "  curl http://100.48.93.44:4000/health"
+echo "  curl -sI https://100-48-93-44.nip.io/health"
+echo "  curl -sI https://100-48-93-44.nip.io/api/auth/open-app   # expect text/html, NOT 302"
 echo "  gitCommit should equal ${GIT_COMMIT}"
