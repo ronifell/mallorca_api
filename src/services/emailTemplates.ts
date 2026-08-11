@@ -42,9 +42,20 @@ function escape(s: string): string {
   });
 }
 
-function shell(innerHtml: string): string {
+type EmailLang = 'en' | 'es';
+
+function resolveEmailLang(language?: string | null): EmailLang {
+  if (typeof language === 'string' && language.toLowerCase().startsWith('en')) return 'en';
+  return 'es';
+}
+
+function shell(innerHtml: string, lang: EmailLang = 'es'): string {
+  const help =
+    lang === 'en'
+      ? `Need help? Email us at <a href="mailto:${OFFICIAL_EMAIL}" style="color:${BRAND.coral};text-decoration:none;">${OFFICIAL_EMAIL}</a>`
+      : `¿Necesitas ayuda? Escríbenos a <a href="mailto:${OFFICIAL_EMAIL}" style="color:${BRAND.coral};text-decoration:none;">${OFFICIAL_EMAIL}</a>`;
   return `<!doctype html>
-<html lang="es">
+<html lang="${lang}">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -70,7 +81,7 @@ function shell(innerHtml: string): string {
           <tr>
             <td align="center" style="padding:8px 24px 24px 24px;color:${BRAND.inkSoft};font-size:12px;line-height:18px;">
               <p style="margin:0;">Citas Mallorca · <a href="https://www.citasmallorca.es" style="color:${BRAND.coral};text-decoration:none;">www.citasmallorca.es</a></p>
-              <p style="margin:6px 0 0 0;">¿Necesitas ayuda? Escríbenos a <a href="mailto:${OFFICIAL_EMAIL}" style="color:${BRAND.coral};text-decoration:none;">${OFFICIAL_EMAIL}</a></p>
+              <p style="margin:6px 0 0 0;">${help}</p>
             </td>
           </tr>
         </table>
@@ -281,18 +292,56 @@ export function premiumWelcomeEmail(vars: {
   };
 }
 
-export function passwordResetEmail(vars: { firstName?: string | null; code: string }): {
+export function passwordResetEmail(vars: {
+  firstName?: string | null;
+  code: string;
+  language?: string | null;
+}): {
   subject: string;
   html: string;
   text: string;
 } {
-  const greetingEs = vars.firstName ? `¡Hola, ${escape(vars.firstName)}!` : '¡Hola!';
+  const lang = resolveEmailLang(vars.language);
+  const name = vars.firstName?.trim() || null;
   const safeCode = escape(vars.code);
-  const inner = `
-    <h1 style="margin:0 0 12px 0;font-family:'Georgia',serif;font-size:24px;color:${BRAND.ink};">${greetingEs}</h1>
+
+  if (lang === 'en') {
+    const greeting = name ? `Hi ${escape(name)},` : 'Hi there,';
+    const inner = `
+    <h1 style="margin:0 0 12px 0;font-family:'Georgia',serif;font-size:24px;color:${BRAND.ink};">${greeting}</h1>
     <p style="margin:0 0 14px 0;font-size:15px;line-height:22px;color:${BRAND.ink};">
-      Hemos recibido una solicitud para restablecer tu contraseña en Citas
-      Mallorca. Introduce este código en la app. Caduca en 15 minutos.
+      We received a request to reset your password for <strong>Citas Mallorca</strong>.
+      Enter this code in the app. It expires in 15 minutes.
+    </p>
+    <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:20px 0;">
+      <tr>
+        <td align="center" style="background:${BRAND.coralSoft};border-radius:16px;padding:20px 24px;border:1px solid ${BRAND.border};">
+          <p style="margin:0 0 8px 0;font-size:13px;color:${BRAND.inkSoft};letter-spacing:0.4px;">Your verification code</p>
+          <p style="margin:0;font-size:34px;font-weight:700;letter-spacing:8px;color:${BRAND.ink};font-family:monospace;">${safeCode}</p>
+        </td>
+      </tr>
+    </table>
+    <p style="margin:0 0 10px 0;font-size:13px;color:${BRAND.inkSoft};">
+      If you did not request this change, you can ignore this email.
+    </p>
+  `;
+    return {
+      subject: 'Reset your password · Citas Mallorca',
+      html: shell(inner, 'en'),
+      text:
+        `${greeting}\n\nWe received a request to reset your password for Citas Mallorca. ` +
+        `Enter this code in the app. It expires in 15 minutes.\n\n` +
+        `Code: ${vars.code}\n\n` +
+        `If you did not request this change, you can ignore this email.`,
+    };
+  }
+
+  const greeting = name ? `¡Hola, ${escape(name)}!` : '¡Hola!';
+  const inner = `
+    <h1 style="margin:0 0 12px 0;font-family:'Georgia',serif;font-size:24px;color:${BRAND.ink};">${greeting}</h1>
+    <p style="margin:0 0 14px 0;font-size:15px;line-height:22px;color:${BRAND.ink};">
+      Hemos recibido una solicitud para restablecer tu contraseña en
+      <strong>Citas Mallorca</strong>. Introduce este código en la app. Caduca en 15 minutos.
     </p>
     <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:20px 0;">
       <tr>
@@ -305,19 +354,14 @@ export function passwordResetEmail(vars: { firstName?: string | null; code: stri
     <p style="margin:0 0 10px 0;font-size:13px;color:${BRAND.inkSoft};">
       Si no has solicitado este cambio, puedes ignorar este correo.
     </p>
-    <hr style="border:none;border-top:1px solid ${BRAND.border};margin:24px 0;" />
-    <p style="margin:0 0 12px 0;font-size:14px;line-height:21px;color:${BRAND.ink};">
-      We received a request to reset your password. Enter this code in the app.
-      It expires in 15 minutes. If it wasn't you, please ignore this email.
-    </p>
   `;
   return {
     subject: 'Restablece tu contraseña · Citas Mallorca',
-    html: shell(inner),
+    html: shell(inner, 'es'),
     text:
-      `${greetingEs}\n\nHemos recibido una solicitud para restablecer tu ` +
-      `contraseña. Introduce este código en la app. Caduca en 15 minutos.\n\n` +
-      `Código / Code: ${vars.code}\n\n` +
-      `If you did not request this, ignore this email.`,
+      `${greeting}\n\nHemos recibido una solicitud para restablecer tu ` +
+      `contraseña en Citas Mallorca. Introduce este código en la app. Caduca en 15 minutos.\n\n` +
+      `Código: ${vars.code}\n\n` +
+      `Si no has solicitado este cambio, puedes ignorar este correo.`,
   };
 }

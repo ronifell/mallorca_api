@@ -555,8 +555,13 @@ export const authService = {
   },
 
   async forgotPassword(input: ForgotPasswordInput): Promise<void> {
-    const r = await query<{ id: string; password_hash: string | null }>(
-      'SELECT id, password_hash FROM users WHERE email = $1',
+    const r = await query<{
+      id: string;
+      password_hash: string | null;
+      first_name: string | null;
+      language: string | null;
+    }>(
+      'SELECT id, password_hash, first_name, language FROM users WHERE email = $1',
       [input.email.toLowerCase()],
     );
     const user = r.rows[0];
@@ -580,7 +585,11 @@ export const authService = {
       );
     });
 
-    const tpl = passwordResetEmail({ firstName: null, code });
+    const tpl = passwordResetEmail({
+      firstName: user.first_name,
+      code,
+      language: user.language,
+    });
     await sendMail({
       to: input.email,
       subject: tpl.subject,
