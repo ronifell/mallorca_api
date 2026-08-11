@@ -36,12 +36,38 @@ const CONSENT = {
     en: 'The code must be 6 digits.',
     es: 'El código debe tener 6 dígitos.',
   },
+  invalidEmail: {
+    en: 'Invalid email',
+    es: 'Introduce un correo electrónico válido.',
+  },
+  passwordMin: {
+    en: 'String must contain at least 8 character(s)',
+    es: 'La contraseña debe tener al menos 8 caracteres.',
+  },
+  passwordRequired: {
+    en: 'String must contain at least 1 character(s)',
+    es: 'Introduce tu contraseña.',
+  },
 } as const;
+
+/** Zod field helpers — English kept as Zod-stable keys that the app maps via i18n. */
+const emailField = z
+  .string({ required_error: CONSENT.invalidEmail.en })
+  .email({ message: CONSENT.invalidEmail.en })
+  .max(254);
+const passwordMin8 = z
+  .string({ required_error: CONSENT.passwordMin.en })
+  .min(8, { message: CONSENT.passwordMin.en })
+  .max(128);
+const passwordRequired = z
+  .string({ required_error: CONSENT.passwordRequired.en })
+  .min(1, { message: CONSENT.passwordRequired.en })
+  .max(128);
 
 export const registerSchema = z
   .object({
-    email: z.string().email().max(254),
-    password: z.string().min(8).max(128),
+    email: emailField,
+    password: passwordMin8,
     // Backwards compat: older clients send `acceptedTerms`. New clients send the
     // two separate checkboxes — both required.
     acceptedTerms: z.boolean().optional(),
@@ -80,8 +106,8 @@ export const registerSchema = z
   });
 
 export const loginSchema = z.object({
-  email: z.string().email().max(254),
-  password: z.string().min(1).max(128),
+  email: emailField,
+  password: passwordRequired,
 });
 
 export const refreshSchema = z.object({
@@ -89,13 +115,13 @@ export const refreshSchema = z.object({
 });
 
 export const forgotPasswordSchema = z.object({
-  email: z.string().email().max(254),
+  email: emailField,
 });
 
 export const resetPasswordSchema = z.object({
-  email: z.string().email().max(254),
-  code: z.string().regex(/^\d{6}$/, CONSENT.resetCode.es),
-  password: z.string().min(8).max(128),
+  email: emailField,
+  code: z.string().regex(/^\d{6}$/, CONSENT.resetCode.en),
+  password: passwordMin8,
 });
 
 export const verifyEmailSchema = z.object({
@@ -103,7 +129,7 @@ export const verifyEmailSchema = z.object({
 });
 
 export const resendVerificationSchema = z.object({
-  email: z.string().email().max(254),
+  email: emailField,
 });
 
 export const googleLoginSchema = z.object({
