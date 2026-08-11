@@ -15,7 +15,7 @@ import { query, withTransaction } from '../../config/database';
 import { env } from '../../config/env';
 import { premiumWelcomeEmail } from '../../services/emailTemplates';
 import { sendMail } from '../../services/mailer';
-import { BadRequest, Unauthorized } from '../../utils/errors';
+import { BadRequest, Conflict, Unauthorized } from '../../utils/errors';
 import { createAndroidPublisherClient } from '../../utils/googlePlayPublisher';
 import { logger } from '../../utils/logger';
 
@@ -410,33 +410,66 @@ export const subscriptionsService = {
     // welcome email — retries of validateAndActivate with the same token
     // (e.g. after a network hiccup) must not re-send the email.
     let isFreshSubscription = false;
+    const statusToStore = validated.pending ? 'grace' : validated.status;
+    const rawPayload = JSON.stringify(validated.raw ?? {});
 
     await withTransaction(async (client) => {
-      const insert = await client.query<{ inserted: boolean }>(
-        `INSERT INTO subscriptions
-            (user_id, platform, product_id, purchase_token, start_date, expiry_date, status, raw_payload)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
-         ON CONFLICT (platform, purchase_token)
-         DO UPDATE SET
-           user_id     = EXCLUDED.user_id,
-           product_id  = EXCLUDED.product_id,
-           expiry_date = EXCLUDED.expiry_date,
-           status      = EXCLUDED.status,
-           raw_payload = EXCLUDED.raw_payload,
-           updated_at  = NOW()
-         RETURNING (xmax = 0) AS inserted`,
-        [
-          userId,
-          input.platform,
-          input.productId,
-          input.purchaseToken,
-          validated.startDate,
-          validated.expiryDate,
-          validated.pending ? 'grace' : validated.status,
-          JSON.stringify(validated.raw ?? {}),
-        ],
+      // Lock any existing row for this store token so ownership checks and
+      // entitlement updates stay atomic (no reassignment race).
+      const existing = await client.query<{ user_id: string }>(
+        `SELECT user_id
+           FROM subscriptions
+          WHERE platform = $1 AND purchase_token = $2
+          FOR UPDATE`,
+        [input.platform, input.purchaseToken],
       );
-      isFreshSubscription = insert.rows[0]?.inserted === true;
+
+      if (existing.rowCount && existing.rows[0].user_id !== userId) {
+        throw Conflict(
+          'Este token de compra ya está vinculado a otra cuenta.',
+        );
+      }
+
+      if (existing.rowCount) {
+        // Same user retry / restore — refresh entitlement fields only.
+        await client.query(
+          `UPDATE subscriptions
+              SET product_id  = $3,
+                  start_date  = $4,
+                  expiry_date = $5,
+                  status      = $6,
+                  raw_payload = $7::jsonb,
+                  updated_at  = NOW()
+            WHERE platform = $1 AND purchase_token = $2`,
+          [
+            input.platform,
+            input.purchaseToken,
+            input.productId,
+            validated.startDate,
+            validated.expiryDate,
+            statusToStore,
+            rawPayload,
+          ],
+        );
+        isFreshSubscription = false;
+      } else {
+        await client.query(
+          `INSERT INTO subscriptions
+              (user_id, platform, product_id, purchase_token, start_date, expiry_date, status, raw_payload)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)`,
+          [
+            userId,
+            input.platform,
+            input.productId,
+            input.purchaseToken,
+            validated.startDate,
+            validated.expiryDate,
+            statusToStore,
+            rawPayload,
+          ],
+        );
+        isFreshSubscription = true;
+      }
 
       if (isPremium) {
         await client.query(
