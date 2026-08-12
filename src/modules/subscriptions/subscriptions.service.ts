@@ -17,6 +17,7 @@ import { premiumWelcomeEmail } from '../../services/emailTemplates';
 import { sendMail } from '../../services/mailer';
 import { BadRequest, Conflict, Unauthorized } from '../../utils/errors';
 import { createAndroidPublisherClient } from '../../utils/googlePlayPublisher';
+import { isUserPremium } from '../../utils/premium';
 import { logger } from '../../utils/logger';
 
 export type Plan = 'monthly_premium' | 'annual_premium';
@@ -257,14 +258,19 @@ async function mapLegacyPlayPurchase(
   // paymentState = 0        → payment pending (bank hold, family approval…)
   // paymentState = 1|2|3    → payment ok (received / trial / deferred change)
   const paymentState = data.paymentState ?? undefined;
-  if (paymentState === undefined) {
-    throw BadRequest('Esta suscripción ya no está activa.');
-  }
-
   const pending = paymentState === 0;
   let status: DbSubscriptionStatus = pending ? 'grace' : 'active';
-  if (data.cancelReason !== undefined && data.cancelReason !== null) {
+
+  if (paymentState === undefined) {
+    if (expiryMs <= now) {
+      throw BadRequest('Esta suscripción ya no está activa.');
+    }
+    // Cancelled but still entitled until expiry (common during a free trial).
     status = 'cancelled';
+  }
+
+  if (data.cancelReason !== undefined && data.cancelReason !== null) {
+    status = expiryMs > now ? 'grace' : 'cancelled';
   }
 
   if (data.acknowledgementState === 0 && !pending) {
@@ -613,7 +619,7 @@ export const subscriptionsService = {
         : null;
 
     return {
-      isPremium: u?.is_premium ?? false,
+      isPremium: await isUserPremium(userId),
       expiryDate: u?.premium_until ? u.premium_until.toISOString() : null,
       productId,
     };
@@ -671,16 +677,45 @@ export const subscriptionsService = {
             WHERE platform = 'google_play' AND purchase_token = $1`,
           [purchaseToken],
         );
-        // Revoke premium for any user whose only active subscription was this one.
         await this.expireDue();
         return;
       }
-      logger.error('RTDN sync: purchases.subscriptions.get failed', {
-        productId,
-        code: e?.code,
-        message: e?.message,
-      });
-      return;
+
+      // Play Billing v5+ products may only resolve through subscriptionsv2.
+      try {
+        const v2 = await androidpublisher.purchases.subscriptionsv2.get({
+          packageName: env.googlePlay.packageName,
+          token: purchaseToken,
+        });
+        const validated = await mapSubscriptionV2Purchase(
+          productId,
+          purchaseToken,
+          v2.data,
+          androidpublisher,
+        );
+        await this.applySyncedPurchase(purchaseToken, validated);
+        return;
+      } catch (v2Err: unknown) {
+        const v2e = v2Err as { code?: number; message?: string };
+        if (v2e?.code === 404 || v2e?.code === 410) {
+          await query(
+            `UPDATE subscriptions
+                SET status = 'cancelled', updated_at = NOW()
+              WHERE platform = 'google_play' AND purchase_token = $1`,
+            [purchaseToken],
+          );
+          await this.expireDue();
+          return;
+        }
+        logger.error('RTDN sync: purchases.subscriptions.get failed', {
+          productId,
+          code: e?.code,
+          message: e?.message,
+          v2Code: v2e?.code,
+          v2Message: v2e?.message,
+        });
+        return;
+      }
     }
 
     const expiryMs = Number(data.expiryTimeMillis ?? 0);
@@ -694,7 +729,7 @@ export const subscriptionsService = {
     let status: DbSubscriptionStatus = 'active';
     const hasCancelReason = data.cancelReason !== undefined && data.cancelReason !== null;
     if (data.paymentState === undefined || data.paymentState === null) {
-      status = 'cancelled';
+      status = expiryMs > Date.now() ? 'grace' : 'cancelled';
     } else if (data.paymentState === 0) {
       // Bank / 3DS still clearing — keep row so a later RTDN can activate Premium.
       status = 'grace';
@@ -703,6 +738,9 @@ export const subscriptionsService = {
       status = expiryMs > Date.now() ? 'grace' : 'cancelled';
     }
     if (expiryMs && expiryMs < Date.now()) status = 'expired';
+
+    const pending = data.paymentState === 0;
+    const isActive = !pending && expiryMs > Date.now();
 
     await withTransaction(async (client) => {
       const upd = await client.query<{ user_id: string }>(
@@ -717,8 +755,6 @@ export const subscriptionsService = {
       );
 
       if (upd.rowCount === 0) {
-        // We don't know this token yet — likely a first-time renewal received
-        // out of order. Nothing to reconcile until the client validates.
         logger.info('RTDN sync: unknown purchase token — skipping', {
           productId,
           paymentState: data.paymentState,
@@ -727,16 +763,14 @@ export const subscriptionsService = {
       }
       const userId = upd.rows[0].user_id;
 
-      const isActive = expiryMs > Date.now() && status !== 'expired';
       await client.query(
         `UPDATE users
             SET is_premium    = $2,
-                premium_until = CASE WHEN $2 THEN $3 ELSE premium_until END
+                premium_until = $3
           WHERE id = $1`,
-        [userId, isActive, expiryDate],
+        [userId, isActive, expiryMs > 0 ? expiryDate : null],
       );
 
-      // Acknowledge once payment is confirmed so Google does not auto-refund.
       if (isActive && data.acknowledgementState === 0) {
         try {
           await androidpublisher.purchases.subscriptions.acknowledge({
@@ -749,6 +783,33 @@ export const subscriptionsService = {
           // Non-fatal — client restore / next validate may acknowledge.
         }
       }
+    });
+  },
+
+  async applySyncedPurchase(purchaseToken: string, validated: ValidatedPurchase): Promise<void> {
+    const statusToStore = validated.pending ? 'grace' : validated.status;
+    const isActive = !validated.pending && validated.expiryDate.getTime() > Date.now();
+
+    await withTransaction(async (client) => {
+      const upd = await client.query<{ user_id: string }>(
+        `UPDATE subscriptions
+            SET expiry_date = $2,
+                status      = $3,
+                raw_payload = $4::jsonb,
+                updated_at  = NOW()
+          WHERE platform = 'google_play' AND purchase_token = $1
+       RETURNING user_id`,
+        [purchaseToken, validated.expiryDate, statusToStore, JSON.stringify(validated.raw ?? {})],
+      );
+      if (upd.rowCount === 0) return;
+      const userId = upd.rows[0].user_id;
+      await client.query(
+        `UPDATE users
+            SET is_premium    = $2,
+                premium_until = $3
+          WHERE id = $1`,
+        [userId, isActive, validated.expiryDate],
+      );
     });
   },
 };

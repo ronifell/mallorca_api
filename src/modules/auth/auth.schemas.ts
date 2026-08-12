@@ -29,8 +29,8 @@ const CONSENT = {
     es: 'Debes aceptar la Política de Privacidad.',
   },
   both: {
-    en: 'You must accept the Terms and Conditions and Privacy Policy.',
-    es: 'Debes aceptar los Términos y la Política de Privacidad.',
+    en: 'You must agree to both the Terms of Service and the Privacy Policy.',
+    es: 'Debes aceptar tanto los Términos de Servicio como la Política de Privacidad.',
   },
   resetCode: {
     en: 'The code must be 6 digits.',

@@ -325,9 +325,8 @@ export const notificationsService = {
   },
 
   async notifySuperLike(receiverId: string, senderId: string) {
-    if (!(await isPrefEnabled(receiverId, 'matches_enabled'))) return;
-    // Intentionally does NOT reveal the sender's name — the "check who sent
-    // it" hook drives the user back into the app.
+    // Super Like alerts are distinct from match notifications — always deliver
+    // so recipients are not left wondering who starred them.
     const lang = await languageOf(receiverId);
     await push(receiverId, {
       title: PUSH_COPY.superLikeTitle[lang],

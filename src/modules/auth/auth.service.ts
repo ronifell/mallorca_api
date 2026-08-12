@@ -102,8 +102,8 @@ function hasGoogleConsent(input: GoogleLoginInput): boolean {
 function googleConsentMessage(language?: 'en' | 'es'): string {
   const lang = language?.toLowerCase().startsWith('en') ? 'en' : 'es';
   return lang === 'en'
-    ? 'You must accept the Terms and Conditions and Privacy Policy.'
-    : 'Debes aceptar los Términos y la Política de Privacidad.';
+    ? 'You must agree to both the Terms of Service and the Privacy Policy.'
+    : 'Debes aceptar tanto los Términos de Servicio como la Política de Privacidad.';
 }
 
 async function verifyGoogleIdToken(
