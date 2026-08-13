@@ -23,6 +23,7 @@ const BRAND = {
 
 interface VerifyEmailVars {
   firstName?: string | null;
+  language?: string | null;
   /** HTTPS CTA — required; email clients block custom schemes. */
   verifyUrl: string;
   /** Custom-scheme deep link kept for text clients / future use. */
@@ -96,14 +97,55 @@ export function welcomeVerificationEmail(vars: VerifyEmailVars): {
   html: string;
   text: string;
 } {
-  const greetingEs = vars.firstName ? `¡Hola, ${escape(vars.firstName)}!` : '¡Hola!';
-  const greetingEn = vars.firstName ? `Hi ${escape(vars.firstName)}!` : 'Hello!';
-  // Email clients (Gmail, etc.) block custom schemes like citasmallorca://.
-  // The button MUST be HTTPS; that page then launches the installed app.
+  const lang = resolveEmailLang(vars.language);
+  const name = vars.firstName?.trim() || null;
   const ctaUrl = escape(vars.verifyUrl);
 
+  if (lang === 'en') {
+    const greeting = name ? `Hi ${escape(name)},` : 'Hi there,';
+    const inner = `
+    <h1 style="margin:0 0 12px 0;font-family:'Georgia',serif;font-size:24px;color:${BRAND.ink};">${greeting}</h1>
+    <p style="margin:0 0 14px 0;font-size:15px;line-height:22px;color:${BRAND.ink};">
+      Welcome to the <strong>Citas Mallorca</strong> community. We're glad to have you here.
+      Tap the button below to confirm your account and open the app.
+    </p>
+    <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:20px 0;">
+      <tr>
+        <td align="center">
+          <table cellpadding="0" cellspacing="0" border="0">
+            <tr>
+              <td align="center" bgcolor="${BRAND.coral}" style="border-radius:999px;">
+                <a href="${ctaUrl}" style="display:inline-block;padding:16px 36px;color:${BRAND.white};font-weight:700;text-decoration:none;font-size:16px;line-height:22px;border-radius:999px;min-width:240px;text-align:center;mso-padding-alt:16px 36px;">
+                  Open the app
+                </a>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+    <p style="margin:0 0 10px 0;font-size:13px;color:${BRAND.inkSoft};">
+      If the button does not work, copy and paste this link into your phone browser:<br />
+      <a href="${ctaUrl}" style="color:${BRAND.coral};word-break:break-all;">${ctaUrl}</a>
+    </p>
+    <p style="margin:18px 0 0 0;font-size:12px;color:${BRAND.inkSoft};">
+      If you did not create this account you can safely ignore this email.
+    </p>
+  `;
+    return {
+      subject: 'Confirm your account · Citas Mallorca',
+      html: shell(inner, 'en'),
+      text:
+        `${greeting}\n\nWelcome to the Citas Mallorca community. ` +
+        `Tap this link on your phone to confirm your account and open the app:\n\n` +
+        `${vars.verifyUrl}\n\n` +
+        `If you did not create this account you can safely ignore this email.`,
+    };
+  }
+
+  const greeting = name ? `¡Hola, ${escape(name)}!` : '¡Hola!';
   const inner = `
-    <h1 style="margin:0 0 12px 0;font-family:'Georgia',serif;font-size:24px;color:${BRAND.ink};">${greetingEs}</h1>
+    <h1 style="margin:0 0 12px 0;font-family:'Georgia',serif;font-size:24px;color:${BRAND.ink};">${greeting}</h1>
     <p style="margin:0 0 14px 0;font-size:15px;line-height:22px;color:${BRAND.ink};">
       Bienvenido a la comunidad de <strong>Citas Mallorca</strong>. Nos alegra
       tenerte aquí. Pulsa el botón para confirmar tu cuenta y abrir la app.
@@ -127,26 +169,19 @@ export function welcomeVerificationEmail(vars: VerifyEmailVars): {
       Si el botón no funciona, copia y pega este enlace en el navegador del teléfono:<br />
       <a href="${ctaUrl}" style="color:${BRAND.coral};word-break:break-all;">${ctaUrl}</a>
     </p>
-    <hr style="border:none;border-top:1px solid ${BRAND.border};margin:24px 0;" />
-    <h2 style="margin:0 0 8px 0;font-size:16px;color:${BRAND.ink};">${greetingEn}</h2>
-    <p style="margin:0 0 12px 0;font-size:14px;line-height:21px;color:${BRAND.ink};">
-      Welcome to the <strong>Citas Mallorca</strong> community. We're glad to
-      have you here. Tap the button above to confirm your account and open the app.
-    </p>
     <p style="margin:18px 0 0 0;font-size:12px;color:${BRAND.inkSoft};">
-      Si no has creado esta cuenta puedes ignorar este mensaje. /
-      If you didn't create this account you can safely ignore this email.
+      Si no has creado esta cuenta puedes ignorar este mensaje.
     </p>
   `;
 
   return {
     subject: 'Confirma tu cuenta · Citas Mallorca',
-    html: shell(inner),
+    html: shell(inner, 'es'),
     text:
-      `${greetingEs}\n\nBienvenido a la comunidad de Citas Mallorca. ` +
+      `${greeting}\n\nBienvenido a la comunidad de Citas Mallorca. ` +
       `Pulsa este enlace en tu teléfono para confirmar tu cuenta y abrir la app:\n\n` +
       `${vars.verifyUrl}\n\n` +
-      `${greetingEn}\nWelcome to the Citas Mallorca community.`,
+      `Si no has creado esta cuenta puedes ignorar este mensaje.`,
   };
 }
 

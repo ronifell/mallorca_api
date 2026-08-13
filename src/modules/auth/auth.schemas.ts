@@ -76,33 +76,14 @@ export const registerSchema = z
   })
   .superRefine((v, ctx) => {
     const lang = resolveLang(v.language);
-    const ok =
-      (v.acceptedTerms === true && v.acceptedPrivacy === true) ||
-      (v.acceptedTerms === true && v.acceptedPrivacy === undefined);
-    if (ok) return;
+    const hasBoth = v.acceptedTerms === true && v.acceptedPrivacy === true;
+    if (hasBoth) return;
 
-    if (v.acceptedTerms !== true && v.acceptedPrivacy !== true) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: CONSENT.both[lang],
-        path: ['acceptedPrivacy'],
-      });
-      return;
-    }
-    if (v.acceptedTerms !== true) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: CONSENT.terms[lang],
-        path: ['acceptedTerms'],
-      });
-    }
-    if (v.acceptedPrivacy !== true) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: CONSENT.privacy[lang],
-        path: ['acceptedPrivacy'],
-      });
-    }
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: CONSENT.both[lang],
+      path: ['acceptedPrivacy'],
+    });
   });
 
 export const loginSchema = z.object({

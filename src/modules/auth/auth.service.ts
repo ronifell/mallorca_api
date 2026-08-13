@@ -63,15 +63,21 @@ async function issueVerificationToken(userId: string): Promise<string> {
   return raw;
 }
 
-async function sendVerificationEmail(
-  userId: string,
-  email: string,
-  firstName: string | null,
-): Promise<void> {
+async function sendVerificationEmail(userId: string, email: string): Promise<void> {
+  const profile = await query<{ first_name: string | null; language: string | null }>(
+    'SELECT first_name, language FROM users WHERE id = $1',
+    [userId],
+  );
+  const row = profile.rows[0];
   const raw = await issueVerificationToken(userId);
   const verifyUrl = buildVerifyUrl(raw);
   const appVerifyUrl = buildAppVerifyDeepLink(raw);
-  const tpl = welcomeVerificationEmail({ firstName, verifyUrl, appVerifyUrl });
+  const tpl = welcomeVerificationEmail({
+    firstName: row?.first_name ?? null,
+    language: row?.language ?? null,
+    verifyUrl,
+    appVerifyUrl,
+  });
   await sendMail({ to: email, subject: tpl.subject, html: tpl.html, text: tpl.text });
 }
 
@@ -272,7 +278,7 @@ export const authService = {
 
     // Send welcome / verification email in the background so a slow or
     // misconfigured SMTP server cannot delay (or break) registration.
-    void sendVerificationEmail(inserted.id, inserted.email, null).catch(() => undefined);
+    void sendVerificationEmail(inserted.id, inserted.email).catch(() => undefined);
 
     return {
       ...tokens,
@@ -497,7 +503,7 @@ export const authService = {
     // Always succeed (no enumeration). Skip if missing or already verified.
     if (!user || user.email_verified_at) return;
     try {
-      await sendVerificationEmail(user.id, user.email, user.first_name);
+      await sendVerificationEmail(user.id, user.email);
     } catch {
       // best effort
     }
