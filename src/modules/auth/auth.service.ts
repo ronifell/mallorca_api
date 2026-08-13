@@ -473,20 +473,23 @@ export const authService = {
     return buildAuthResult(user);
   },
 
-  async verifyEmail(input: VerifyEmailInput): Promise<{ verified: boolean }> {
+  async verifyEmail(input: VerifyEmailInput): Promise<{ verified: boolean; language: 'en' | 'es' }> {
     const tokenHash = crypto.createHash('sha256').update(input.token).digest('hex');
     const r = await query<{
       id: string;
       user_id: string;
       used_at: Date | null;
       expires_at: Date;
+      language: string | null;
     }>(
-      `SELECT id, user_id, used_at, expires_at
-         FROM email_verifications
-         WHERE token_hash = $1`,
+      `SELECT ev.id, ev.user_id, ev.used_at, ev.expires_at, u.language
+         FROM email_verifications ev
+         JOIN users u ON u.id = ev.user_id
+         WHERE ev.token_hash = $1`,
       [tokenHash],
     );
     const row = r.rows[0];
+    const language = row?.language?.toLowerCase().startsWith('en') ? 'en' : 'es';
     if (!row || row.used_at || row.expires_at.getTime() < Date.now()) {
       throw BadRequest('El enlace de verificación no es válido o ha caducado.');
     }
@@ -501,7 +504,20 @@ export const authService = {
         [row.user_id],
       );
     });
-    return { verified: true };
+    return { verified: true, language };
+  },
+
+  async resolveVerificationPageLanguage(token: string): Promise<'en' | 'es'> {
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    const r = await query<{ language: string | null }>(
+      `SELECT u.language
+         FROM email_verifications ev
+         JOIN users u ON u.id = ev.user_id
+         WHERE ev.token_hash = $1`,
+      [tokenHash],
+    );
+    const language = r.rows[0]?.language;
+    return language?.toLowerCase().startsWith('en') ? 'en' : 'es';
   },
 
   async resendVerification(input: ResendVerificationInput): Promise<void> {

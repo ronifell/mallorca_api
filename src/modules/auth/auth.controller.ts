@@ -34,8 +34,56 @@ function buildAndroidOpenAppIntent(host = 'email-verified', query = ''): string 
   );
 }
 
+type PageLang = 'en' | 'es';
+
+function resolvePageLang(language?: string | null): PageLang {
+  if (typeof language === 'string' && language.toLowerCase().startsWith('en')) return 'en';
+  return 'es';
+}
+
+const OPEN_APP_COPY: Record<
+  PageLang,
+  {
+    verifiedTitle: string;
+    verifiedHeading: string;
+    verifiedMessage: string;
+    openApp: string;
+    openDirect: string;
+    playStoreHint: string;
+    invalidTitle: string;
+    invalidHeading: string;
+    invalidMessage: string;
+  }
+> = {
+  en: {
+    verifiedTitle: 'Account verified · Citas Mallorca',
+    verifiedHeading: 'Account verified!',
+    verifiedMessage:
+      'Tap the button to open Citas Mallorca. If the app does not open automatically, use the button below.',
+    openApp: 'Open the app',
+    openDirect: 'Open with direct link',
+    playStoreHint: 'If you do not have the app installed,',
+    invalidTitle: 'Invalid link · Citas Mallorca',
+    invalidHeading: 'Invalid link',
+    invalidMessage: 'This link has expired or has already been used. Request a new one from the app.',
+  },
+  es: {
+    verifiedTitle: 'Cuenta verificada · Citas Mallorca',
+    verifiedHeading: '¡Cuenta verificada!',
+    verifiedMessage:
+      'Pulsa el botón para abrir Citas Mallorca. Si la app no se abre sola, usa el botón de abajo.',
+    openApp: 'Abrir la app',
+    openDirect: 'Abrir con enlace directo',
+    playStoreHint: 'Si no tienes la app instalada,',
+    invalidTitle: 'Enlace no válido · Citas Mallorca',
+    invalidHeading: 'Enlace no válido',
+    invalidMessage: 'El enlace ha caducado o ya se ha utilizado. Solicita uno nuevo desde la app.',
+  },
+};
+
 function buildOpenAppPageHtml(
   deepLink: string,
+  lang: PageLang,
   opts?: {
     title?: string;
     heading?: string;
@@ -43,19 +91,22 @@ function buildOpenAppPageHtml(
     androidIntent?: string;
   },
 ): string {
+  const copy = OPEN_APP_COPY[lang];
   const androidIntent = opts?.androidIntent ?? buildAndroidOpenAppIntent();
-  const title = opts?.title ?? 'Cuenta verificada · Citas Mallorca';
-  const heading = opts?.heading ?? '¡Cuenta verificada!';
-  const message =
-    opts?.message ??
-    'Pulsa el botón para abrir Citas Mallorca. Si la app no se abre sola, usa el botón de abajo.';
+  const title = opts?.title ?? copy.verifiedTitle;
+  const heading = opts?.heading ?? copy.verifiedHeading;
+  const message = opts?.message ?? copy.verifiedMessage;
+  const playStoreLink =
+    lang === 'en'
+      ? `<a href="${PLAY_STORE_URL}" style="color:#E8554E;">download it on Google Play</a>.`
+      : `<a href="${PLAY_STORE_URL}" style="color:#E8554E;">descárgala en Google Play</a>.`;
 
   // Escape for HTML attributes
   const safeDeepLink = deepLink.replace(/"/g, '&quot;');
   const safeIntent = androidIntent.replace(/"/g, '&quot;');
 
   return `<!doctype html>
-<html lang="es"><head><meta charset="utf-8" />
+<html lang="${lang}"><head><meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>${title}</title>
 <style>
@@ -93,10 +144,10 @@ function buildOpenAppPageHtml(
   <div class="ok">✓</div>
   <h1>${heading}</h1>
   <p>${message}</p>
-  <a class="btn" id="open-btn" href="${safeIntent}">Abrir la app</a>
+  <a class="btn" id="open-btn" href="${safeIntent}">${copy.openApp}</a>
   <br />
-  <a class="btn-secondary" href="${safeDeepLink}">Abrir con enlace directo</a>
-  <p class="hint">Si no tienes la app instalada, <a href="${PLAY_STORE_URL}" style="color:#E8554E;">descárgala en Google Play</a>.</p>
+  <a class="btn-secondary" href="${safeDeepLink}">${copy.openDirect}</a>
+  <p class="hint">${copy.playStoreHint} ${playStoreLink}</p>
 </div></div>
 <script>
   document.getElementById('open-btn').addEventListener('click', function (e) {
@@ -109,17 +160,18 @@ function buildOpenAppPageHtml(
 </body></html>`;
 }
 
-function buildVerifiedPageHtml(deepLink: string): string {
-  return buildOpenAppPageHtml(deepLink, {
+function buildVerifiedPageHtml(deepLink: string, lang: PageLang): string {
+  return buildOpenAppPageHtml(deepLink, lang, {
     androidIntent: buildAndroidOpenAppIntent('email-verified'),
   });
 }
 
-function buildInvalidTokenPageHtml(): string {
+function buildInvalidTokenPageHtml(lang: PageLang): string {
+  const copy = OPEN_APP_COPY[lang];
   return `<!doctype html>
-<html lang="es"><head><meta charset="utf-8" />
+<html lang="${lang}"><head><meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Enlace no válido · Citas Mallorca</title>
+<title>${copy.invalidTitle}</title>
 <style>
   body { margin:0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background:#F2EBE0; color:#3D2618; }
   .wrap { min-height:100vh; display:flex; align-items:center; justify-content:center; padding:24px; }
@@ -135,9 +187,9 @@ function buildInvalidTokenPageHtml(): string {
 <body><div class="wrap"><div class="card">
   <div class="logo">Citas <span>Mallorca</span></div>
   <div class="ok">!</div>
-  <h1>Enlace no válido</h1>
-  <p>El enlace ha caducado o ya se ha utilizado. Solicita uno nuevo desde la app.</p>
-  <a class="btn" href="${buildAndroidOpenAppIntent().replace(/"/g, '&quot;')}">Abrir la app</a>
+  <h1>${copy.invalidHeading}</h1>
+  <p>${copy.invalidMessage}</p>
+  <a class="btn" href="${buildAndroidOpenAppIntent().replace(/"/g, '&quot;')}">${copy.openApp}</a>
 </div></div></body></html>`;
 }
 
@@ -194,25 +246,23 @@ export const authController = {
     const token = String(req.query.token ?? req.body?.token ?? '');
     const data = verifyEmailSchema.parse({ token });
     try {
-      await authService.verifyEmail(data);
+      const result = await authService.verifyEmail(data);
+      const accepts = (req.headers.accept ?? '').toString();
+      if (accepts.includes('application/json')) {
+        res.json({ verified: true, deepLink: buildEmailVerifiedDeepLink() });
+      } else {
+        res
+          .type('html')
+          .send(buildVerifiedPageHtml(buildEmailVerifiedDeepLink(), result.language));
+      }
     } catch (e) {
+      const pageLang = resolvePageLang(await authService.resolveVerificationPageLanguage(token));
       const accepts = (req.headers.accept ?? '').toString();
       if (accepts.includes('application/json')) {
         res.status(400).json({ error: { code: 'BAD_REQUEST', message: (e as Error).message } });
       } else {
-        res.status(400).type('html').send(buildInvalidTokenPageHtml());
+        res.status(400).type('html').send(buildInvalidTokenPageHtml(pageLang));
       }
-      return;
-    }
-
-    const accepts = (req.headers.accept ?? '').toString();
-    if (accepts.includes('application/json')) {
-      res.json({ verified: true, deepLink: buildEmailVerifiedDeepLink() });
-    } else {
-      // Serve the bridge page directly from the API so verification succeeds even
-      // when the marketing /open-app.html page is unavailable (404) or App Links
-      // are not yet verified on the device.
-      res.type('html').send(buildVerifiedPageHtml(buildEmailVerifiedDeepLink()));
     }
   },
 
@@ -229,7 +279,7 @@ export const authController = {
    */
   async openApp(_req: Request, res: Response) {
     res.type('html').send(
-      buildOpenAppPageHtml(buildEmailVerifiedDeepLink(), {
+      buildOpenAppPageHtml(buildEmailVerifiedDeepLink(), 'es', {
         title: 'Citas Mallorca',
         heading: 'Abrir Citas Mallorca',
         message:
