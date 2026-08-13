@@ -386,9 +386,10 @@ export const subscriptionsService = {
       id: string;
       email: string;
       first_name: string | null;
+      language: string | null;
       is_premium: boolean;
     }>(
-      'SELECT id, email, first_name, is_premium FROM users WHERE id = $1',
+      'SELECT id, email, first_name, language, is_premium FROM users WHERE id = $1',
       [userId],
     );
     const userBefore = userRow.rows[0];
@@ -506,6 +507,7 @@ export const subscriptionsService = {
         to: userBefore.email,
         ...premiumWelcomeEmail({
           firstName: userBefore.first_name,
+          language: userBefore.language,
           plan: input.productId as 'monthly_premium' | 'annual_premium',
           expiryDate: validated.expiryDate,
         }),

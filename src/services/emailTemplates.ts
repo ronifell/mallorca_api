@@ -50,7 +50,7 @@ function resolveEmailLang(language?: string | null): EmailLang {
   return 'es';
 }
 
-function shell(innerHtml: string, lang: EmailLang): string {
+function shell(innerHtml: string, lang: EmailLang, opts?: { disclaimer?: string | null }): string {
   const footer =
     lang === 'en'
       ? {
@@ -61,6 +61,11 @@ function shell(innerHtml: string, lang: EmailLang): string {
           help: `¿Necesitas ayuda? Escríbenos a <a href="mailto:${OFFICIAL_EMAIL}" style="color:${BRAND.coral};text-decoration:none;">${OFFICIAL_EMAIL}</a>`,
           disclaimer: 'Si no has creado esta cuenta puedes ignorar este mensaje.',
         };
+  const disclaimer =
+    opts?.disclaimer === null ? null : opts?.disclaimer ?? footer.disclaimer;
+  const disclaimerHtml = disclaimer
+    ? `<p style="margin:10px 0 0 0;">${disclaimer}</p>`
+    : '';
   return `<!doctype html>
 <html lang="${lang}">
   <head>
@@ -89,7 +94,7 @@ function shell(innerHtml: string, lang: EmailLang): string {
             <td align="center" style="padding:8px 24px 24px 24px;color:${BRAND.inkSoft};font-size:12px;line-height:18px;">
               <p style="margin:0;">Citas Mallorca · <a href="https://www.citasmallorca.es" style="color:${BRAND.coral};text-decoration:none;">www.citasmallorca.es</a></p>
               <p style="margin:6px 0 0 0;">${footer.help}</p>
-              <p style="margin:10px 0 0 0;">${footer.disclaimer}</p>
+              ${disclaimerHtml}
             </td>
           </tr>
         </table>
@@ -260,6 +265,7 @@ export function googleWelcomeEmail(vars: {
  */
 export function premiumWelcomeEmail(vars: {
   firstName?: string | null;
+  language?: string | null;
   plan?: 'monthly_premium' | 'annual_premium' | null;
   expiryDate?: Date | null;
 }): {
@@ -267,25 +273,80 @@ export function premiumWelcomeEmail(vars: {
   html: string;
   text: string;
 } {
-  const greetingEs = vars.firstName ? `¡Hola, ${escape(vars.firstName)}!` : '¡Hola!';
+  const lang = resolveEmailLang(vars.language);
+  const name = vars.firstName?.trim() || null;
+  const locale = lang === 'en' ? 'en-GB' : 'es-ES';
   const planLabel =
     vars.plan === 'annual_premium'
-      ? 'Premium Anual'
+      ? lang === 'en'
+        ? 'Annual Premium'
+        : 'Premium Anual'
       : vars.plan === 'monthly_premium'
-        ? 'Premium Mensual'
+        ? lang === 'en'
+          ? 'Monthly Premium'
+          : 'Premium Mensual'
         : 'Premium';
   const expiryLine = vars.expiryDate
-    ? `<p style="margin:0 0 14px 0;font-size:14px;color:${BRAND.inkSoft};">Renovación / caducidad: <strong>${escape(
-        vars.expiryDate.toLocaleDateString('es-ES', {
-          day: '2-digit',
-          month: 'long',
-          year: 'numeric',
-        }),
-      )}</strong>.</p>`
+    ? lang === 'en'
+      ? `<p style="margin:0 0 14px 0;font-size:14px;color:${BRAND.inkSoft};">Renewal / expiry: <strong>${escape(
+          vars.expiryDate.toLocaleDateString('en-GB', {
+            day: '2-digit',
+            month: 'long',
+            year: 'numeric',
+          }),
+        )}</strong>.</p>`
+      : `<p style="margin:0 0 14px 0;font-size:14px;color:${BRAND.inkSoft};">Renovación / caducidad: <strong>${escape(
+          vars.expiryDate.toLocaleDateString('es-ES', {
+            day: '2-digit',
+            month: 'long',
+            year: 'numeric',
+          }),
+        )}</strong>.</p>`
     : '';
 
+  if (lang === 'en') {
+    const greeting = name ? `Hi ${escape(name)},` : 'Hello,';
+    const inner = `
+    <h1 style="margin:0 0 12px 0;font-family:'Georgia',serif;font-size:24px;color:${BRAND.ink};">${greeting}</h1>
+    <p style="margin:0 0 14px 0;font-size:15px;line-height:22px;color:${BRAND.ink};">
+      Thank you for using <strong>Citas Mallorca</strong>! Your
+      <strong>${escape(planLabel)}</strong> subscription is now active.
+      We hope you have a wonderful experience and make a special connection.
+      Thank you for being part of our community.
+    </p>
+    <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:20px 0;">
+      <tr>
+        <td align="center" style="background:${BRAND.coralSoft};border-radius:16px;padding:20px 24px;border:1px solid ${BRAND.border};">
+          <p style="margin:0 0 6px 0;font-size:13px;color:${BRAND.inkSoft};letter-spacing:0.4px;">Your plan</p>
+          <p style="margin:0;font-size:22px;font-weight:700;color:${BRAND.ink};">${escape(planLabel)}</p>
+        </td>
+      </tr>
+    </table>
+    ${expiryLine}
+    <p style="margin:0 0 12px 0;font-size:13px;color:${BRAND.inkSoft};">
+      You can manage or cancel your subscription at any time from your Google Play account.
+    </p>
+  `;
+    const expiryText = vars.expiryDate
+      ? `Renewal / expiry: ${vars.expiryDate.toLocaleDateString(locale)}\n\n`
+      : '';
+    return {
+      subject: 'Your Premium is active! · Citas Mallorca',
+      html: shell(inner, 'en', { disclaimer: null }),
+      text:
+        `${greeting}\n\n` +
+        `Thank you for using Citas Mallorca! Your ${planLabel} subscription is now active. ` +
+        `We hope you have a wonderful experience and make a special connection. ` +
+        `Thank you for being part of our community.\n\n` +
+        expiryText +
+        `You can manage or cancel your subscription at any time from your Google Play account.\n\n` +
+        `Need help? Email us at ${OFFICIAL_EMAIL}`,
+    };
+  }
+
+  const greeting = name ? `¡Hola, ${escape(name)}!` : '¡Hola!';
   const inner = `
-    <h1 style="margin:0 0 12px 0;font-family:'Georgia',serif;font-size:24px;color:${BRAND.ink};">${greetingEs}</h1>
+    <h1 style="margin:0 0 12px 0;font-family:'Georgia',serif;font-size:24px;color:${BRAND.ink};">${greeting}</h1>
     <p style="margin:0 0 14px 0;font-size:15px;line-height:22px;color:${BRAND.ink};">
       ¡Gracias por usar <strong>Citas Mallorca</strong>! Tu suscripción
       <strong>${escape(planLabel)}</strong> se ha activado correctamente.
@@ -305,28 +366,24 @@ export function premiumWelcomeEmail(vars: {
       Puedes gestionar o cancelar tu suscripción en cualquier momento desde tu
       cuenta de Google Play.
     </p>
-    <hr style="border:none;border-top:1px solid ${BRAND.border};margin:24px 0;" />
-    <p style="margin:0;font-size:12px;color:${BRAND.inkSoft};">
-      ¿Necesitas ayuda con tu suscripción? Escríbenos a
-      <a href="mailto:${OFFICIAL_EMAIL}" style="color:${BRAND.coral};text-decoration:none;">${OFFICIAL_EMAIL}</a>.
-    </p>
   `;
+  const expiryText = vars.expiryDate
+    ? `Renovación / caducidad: ${vars.expiryDate.toLocaleDateString(locale)}\n\n`
+    : '';
 
   return {
     subject: '¡Tu Premium está activo! · Citas Mallorca',
-    html: shell(inner, 'es'),
+    html: shell(inner, 'es', { disclaimer: null }),
     text:
-      `${greetingEs}\n\n` +
+      `${greeting}\n\n` +
       `¡Gracias por usar Citas Mallorca! Tu suscripción ${planLabel} se ha ` +
       `activado correctamente. Esperamos que tengas una experiencia ` +
       `maravillosa y que crees una conexión especial. Gracias por formar ` +
       `parte de nuestra comunidad.\n\n` +
-      (vars.expiryDate
-        ? `Renovación / caducidad: ${vars.expiryDate.toLocaleDateString('es-ES')}\n\n`
-        : '') +
+      expiryText +
       `Puedes gestionar o cancelar tu suscripción en cualquier momento desde ` +
       `tu cuenta de Google Play.\n\n` +
-      `www.citasmallorca.es`,
+      `¿Necesitas ayuda? Escríbenos a ${OFFICIAL_EMAIL}`,
   };
 }
 
