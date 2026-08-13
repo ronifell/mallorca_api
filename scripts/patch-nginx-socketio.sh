@@ -36,6 +36,7 @@ server {
     listen 443 ssl http2;
     listen [::]:443 ssl http2;
     server_name ${DOMAIN};
+    client_max_body_size 8m;
 
     # certbot-managed paths — adjust if your cert paths differ
     ssl_certificate /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
