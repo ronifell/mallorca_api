@@ -4,15 +4,15 @@
 # Run on the server (~/mallorca_api):
 #   bash scripts/deploy-backend.sh
 #
-# Expected commit (local repo): e4d20df — adds DELETE /api/users/me/fcm-token
+# Expected commit (local repo): 7966673 — subscription sync, super-like push, consent copy
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
 EXPECTED_FEATURES=(
-  "router.delete('/me/fcm-token'"
-  "async deleteFcm"
-  "clearFcmToken"
+  "premium_until"
+  "Super Like alerts are distinct"
+  "You must agree to both the Terms of Service"
 )
 
 echo "=== mallorca_api deploy ==="
@@ -22,7 +22,7 @@ GIT_SHORT="$(git rev-parse --short HEAD)"
 echo "Deploying commit: ${GIT_COMMIT} (${GIT_SHORT})"
 
 for needle in "${EXPECTED_FEATURES[@]}"; do
-  if ! grep -rq "$needle" src/modules/users/; then
+  if ! grep -rq "$needle" src/; then
     echo "ERROR: source missing expected feature: $needle"
     exit 1
   fi
