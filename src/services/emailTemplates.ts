@@ -50,11 +50,17 @@ function resolveEmailLang(language?: string | null): EmailLang {
   return 'es';
 }
 
-function shell(innerHtml: string, lang: EmailLang = 'es'): string {
-  const help =
+function shell(innerHtml: string, lang: EmailLang): string {
+  const footer =
     lang === 'en'
-      ? `Need help? Email us at <a href="mailto:${OFFICIAL_EMAIL}" style="color:${BRAND.coral};text-decoration:none;">${OFFICIAL_EMAIL}</a>`
-      : `¿Necesitas ayuda? Escríbenos a <a href="mailto:${OFFICIAL_EMAIL}" style="color:${BRAND.coral};text-decoration:none;">${OFFICIAL_EMAIL}</a>`;
+      ? {
+          help: `Need help? Email us at <a href="mailto:${OFFICIAL_EMAIL}" style="color:${BRAND.coral};text-decoration:none;">${OFFICIAL_EMAIL}</a>`,
+          disclaimer: 'If you did not create this account you can safely ignore this email.',
+        }
+      : {
+          help: `¿Necesitas ayuda? Escríbenos a <a href="mailto:${OFFICIAL_EMAIL}" style="color:${BRAND.coral};text-decoration:none;">${OFFICIAL_EMAIL}</a>`,
+          disclaimer: 'Si no has creado esta cuenta puedes ignorar este mensaje.',
+        };
   return `<!doctype html>
 <html lang="${lang}">
   <head>
@@ -82,7 +88,8 @@ function shell(innerHtml: string, lang: EmailLang = 'es'): string {
           <tr>
             <td align="center" style="padding:8px 24px 24px 24px;color:${BRAND.inkSoft};font-size:12px;line-height:18px;">
               <p style="margin:0;">Citas Mallorca · <a href="https://www.citasmallorca.es" style="color:${BRAND.coral};text-decoration:none;">www.citasmallorca.es</a></p>
-              <p style="margin:6px 0 0 0;">${help}</p>
+              <p style="margin:6px 0 0 0;">${footer.help}</p>
+              <p style="margin:10px 0 0 0;">${footer.disclaimer}</p>
             </td>
           </tr>
         </table>
@@ -102,7 +109,7 @@ export function welcomeVerificationEmail(vars: VerifyEmailVars): {
   const ctaUrl = escape(vars.verifyUrl);
 
   if (lang === 'en') {
-    const greeting = name ? `Hi ${escape(name)},` : 'Hi there,';
+    const greeting = name ? `Hi ${escape(name)},` : 'Hello,';
     const inner = `
     <h1 style="margin:0 0 12px 0;font-family:'Georgia',serif;font-size:24px;color:${BRAND.ink};">${greeting}</h1>
     <p style="margin:0 0 14px 0;font-size:15px;line-height:22px;color:${BRAND.ink};">
@@ -128,9 +135,6 @@ export function welcomeVerificationEmail(vars: VerifyEmailVars): {
       If the button does not work, copy and paste this link into your phone browser:<br />
       <a href="${ctaUrl}" style="color:${BRAND.coral};word-break:break-all;">${ctaUrl}</a>
     </p>
-    <p style="margin:18px 0 0 0;font-size:12px;color:${BRAND.inkSoft};">
-      If you did not create this account you can safely ignore this email.
-    </p>
   `;
     return {
       subject: 'Confirm your account · Citas Mallorca',
@@ -139,7 +143,8 @@ export function welcomeVerificationEmail(vars: VerifyEmailVars): {
         `${greeting}\n\nWelcome to the Citas Mallorca community. ` +
         `Tap this link on your phone to confirm your account and open the app:\n\n` +
         `${vars.verifyUrl}\n\n` +
-        `If you did not create this account you can safely ignore this email.`,
+        `If you did not create this account you can safely ignore this email.\n\n` +
+        `Need help? Email us at ${OFFICIAL_EMAIL}`,
     };
   }
 
@@ -169,9 +174,6 @@ export function welcomeVerificationEmail(vars: VerifyEmailVars): {
       Si el botón no funciona, copia y pega este enlace en el navegador del teléfono:<br />
       <a href="${ctaUrl}" style="color:${BRAND.coral};word-break:break-all;">${ctaUrl}</a>
     </p>
-    <p style="margin:18px 0 0 0;font-size:12px;color:${BRAND.inkSoft};">
-      Si no has creado esta cuenta puedes ignorar este mensaje.
-    </p>
   `;
 
   return {
@@ -181,7 +183,8 @@ export function welcomeVerificationEmail(vars: VerifyEmailVars): {
       `${greeting}\n\nBienvenido a la comunidad de Citas Mallorca. ` +
       `Pulsa este enlace en tu teléfono para confirmar tu cuenta y abrir la app:\n\n` +
       `${vars.verifyUrl}\n\n` +
-      `Si no has creado esta cuenta puedes ignorar este mensaje.`,
+      `Si no has creado esta cuenta puedes ignorar este mensaje.\n\n` +
+      `¿Necesitas ayuda? Escríbenos a ${OFFICIAL_EMAIL}`,
   };
 }
 
@@ -241,7 +244,7 @@ export function googleWelcomeEmail(vars: {
   `;
   return {
     subject: '¡Bienvenido a Citas Mallorca!',
-    html: shell(inner),
+    html: shell(inner, 'es'),
     text:
       `${greetingEs}\n\n` +
       `¡Bienvenido a Citas Mallorca! Tu cuenta se ha creado correctamente al ` +
@@ -311,7 +314,7 @@ export function premiumWelcomeEmail(vars: {
 
   return {
     subject: '¡Tu Premium está activo! · Citas Mallorca',
-    html: shell(inner),
+    html: shell(inner, 'es'),
     text:
       `${greetingEs}\n\n` +
       `¡Gracias por usar Citas Mallorca! Tu suscripción ${planLabel} se ha ` +

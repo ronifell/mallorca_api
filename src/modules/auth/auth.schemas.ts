@@ -64,10 +64,17 @@ const passwordRequired = z
   .min(1, { message: CONSENT.passwordRequired.en })
   .max(128);
 
+const firstNameField = z
+  .string({ required_error: 'Required' })
+  .trim()
+  .min(1, { message: 'Required' })
+  .max(80);
+
 export const registerSchema = z
   .object({
     email: emailField,
     password: passwordMin8,
+    firstName: firstNameField,
     // Backwards compat: older clients send `acceptedTerms`. New clients send the
     // two separate checkboxes — both required.
     acceptedTerms: z.boolean().optional(),

@@ -63,7 +63,16 @@ async function issueVerificationToken(userId: string): Promise<string> {
   return raw;
 }
 
-async function sendVerificationEmail(userId: string, email: string): Promise<void> {
+interface VerificationEmailOverrides {
+  firstName?: string | null;
+  language?: 'en' | 'es' | null;
+}
+
+async function sendVerificationEmail(
+  userId: string,
+  email: string,
+  overrides?: VerificationEmailOverrides,
+): Promise<void> {
   const profile = await query<{ first_name: string | null; language: string | null }>(
     'SELECT first_name, language FROM users WHERE id = $1',
     [userId],
@@ -73,8 +82,8 @@ async function sendVerificationEmail(userId: string, email: string): Promise<voi
   const verifyUrl = buildVerifyUrl(raw);
   const appVerifyUrl = buildAppVerifyDeepLink(raw);
   const tpl = welcomeVerificationEmail({
-    firstName: row?.first_name ?? null,
-    language: row?.language ?? null,
+    firstName: overrides?.firstName ?? row?.first_name ?? null,
+    language: overrides?.language ?? row?.language ?? null,
     verifyUrl,
     appVerifyUrl,
   });
@@ -244,19 +253,22 @@ export const authService = {
     const role = isAdminEmail(input.email) ? 'admin' : 'user';
 
     const acceptedPrivacy = input.acceptedPrivacy === true;
+    const accountLanguage = input.language ?? 'en';
+    const firstName = input.firstName.trim();
     const inserted = await withTransaction(async (client) => {
       const r = await client.query<{ id: string; email: string }>(
         `INSERT INTO users (
-            email, password_hash, role, language,
+            email, password_hash, role, language, first_name,
             terms_accepted_at, privacy_accepted_at
          )
-         VALUES ($1, $2, $3, $4, NOW(), $5)
+         VALUES ($1, $2, $3, $4, $5, NOW(), $6)
          RETURNING id, email`,
         [
           input.email.toLowerCase(),
           hash,
           role,
-          input.language ?? 'en',
+          accountLanguage,
+          firstName,
           acceptedPrivacy ? new Date() : null,
         ],
       );
@@ -278,7 +290,10 @@ export const authService = {
 
     // Send welcome / verification email in the background so a slow or
     // misconfigured SMTP server cannot delay (or break) registration.
-    void sendVerificationEmail(inserted.id, inserted.email).catch(() => undefined);
+    void sendVerificationEmail(inserted.id, inserted.email, {
+      firstName,
+      language: accountLanguage,
+    }).catch(() => undefined);
 
     return {
       ...tokens,
