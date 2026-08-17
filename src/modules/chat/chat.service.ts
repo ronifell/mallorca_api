@@ -99,17 +99,38 @@ export const chatService = {
       }
     }
 
-    // Premium gate: only premium users can initiate (send the first message).
-    if (ctx.messageCount === 0) {
-      const premium = await isUserPremium(senderId);
-      if (!premium) {
-        throw Forbidden('Solo los usuarios Premium pueden iniciar conversaciones.');
-      }
-    }
-
+    // Premium gate and insert run in one transaction so concurrent first-message
+    // sends cannot both pass a stale messageCount read outside the transaction.
     const receiverId = ctx.participants[0] === senderId ? ctx.participants[1] : ctx.participants[0];
 
     const insertedId = await withTransaction(async (client) => {
+      const locked = await client.query<{
+        user_a_id: string;
+        user_b_id: string;
+        msg_count: string;
+      }>(
+        `SELECT m.user_a_id, m.user_b_id,
+                (SELECT COUNT(*) FROM messages mx WHERE mx.conversation_id = c.id) AS msg_count
+           FROM conversations c
+           JOIN matches m ON m.id = c.match_id
+          WHERE c.id = $1
+          FOR UPDATE OF c`,
+        [conversationId],
+      );
+      const row = locked.rows[0];
+      if (!row) throw NotFound('No se ha encontrado la conversación.');
+      if (row.user_a_id !== senderId && row.user_b_id !== senderId) {
+        throw Forbidden('No formas parte de esta conversación.');
+      }
+
+      const messageCount = Number(row.msg_count);
+      if (messageCount === 0) {
+        const premium = await isUserPremium(senderId);
+        if (!premium) {
+          throw Forbidden('Solo los usuarios Premium pueden iniciar conversaciones.');
+        }
+      }
+
       const r = await client.query<{ id: string; created_at: Date }>(
         `INSERT INTO messages (
            conversation_id, sender_id, type, text, image_url, audio_url, audio_duration

@@ -573,6 +573,8 @@ export const subscriptionsService = {
     );
     const sub = r.rows[0];
     if (!sub) return;
+    // Mock/dev tokens are not known to Google — refreshing would cancel them.
+    if (sub.purchase_token.startsWith('dev_token_')) return;
     await this.syncGooglePlayPurchase(sub.product_id, sub.purchase_token);
   },
 

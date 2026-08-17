@@ -467,7 +467,14 @@ async function recordLike(
         [userId, targetId],
       );
       if (existingMatch.rowCount) {
-        return { matched: true, matchId: existingMatch.rows[0].id, isNewLike };
+        const matchId = existingMatch.rows[0].id;
+        // Legacy matches may pre-date auto-created conversation shells.
+        await client.query(
+          `INSERT INTO conversations (match_id) VALUES ($1)
+             ON CONFLICT (match_id) DO NOTHING`,
+          [matchId],
+        );
+        return { matched: true, matchId, isNewLike };
       }
 
       // Check reciprocal like.

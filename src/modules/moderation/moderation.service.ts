@@ -18,12 +18,12 @@ export const moderationService = {
                OR (sender_id = $2 AND receiver_id = $1)`,
         [userId, targetId],
       );
-      // Remove any existing match.
-      const a = userId < targetId ? userId : targetId;
-      const b = userId < targetId ? targetId : userId;
+      // Remove any existing match (canonical PG UUID ordering, not JS string compare).
       await client.query(
-        `DELETE FROM matches WHERE user_a_id = $1 AND user_b_id = $2`,
-        [a, b],
+        `DELETE FROM matches
+          WHERE user_a_id = LEAST($1::uuid, $2::uuid)
+            AND user_b_id = GREATEST($1::uuid, $2::uuid)`,
+        [userId, targetId],
       );
     });
   },
